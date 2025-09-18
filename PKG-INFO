@@ -1,3 +1,17 @@
+Metadata-Version: 2.4
+Name: topdesk-mcp
+Version: 0.8.1
+Summary: MCP server for TOPdesk API using FastMCP and TOPdeskPy SDK
+License-File: LICENSE
+Requires-Python: >=3.11
+Requires-Dist: fastmcp
+Requires-Dist: markitdown
+Requires-Dist: requests
+Provides-Extra: dev
+Requires-Dist: pytest-cov>=4.0.0; extra == 'dev'
+Requires-Dist: pytest>=7.0.0; extra == 'dev'
+Description-Content-Type: text/markdown
+
 # topdesk-mcp
 
 This project is a Model Context Protocol (MCP) server implemented in Python. It exposes the Topdesk API via the TOPdeskPy SDK.
