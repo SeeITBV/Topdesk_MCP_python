@@ -53,18 +53,52 @@ if "urllib3" not in sys.modules:  # pragma: no cover - testing support only
 if "fastmcp" not in sys.modules:  # pragma: no cover - testing support only
     fastmcp_stub = ModuleType("fastmcp")
 
+    class ListToolsRequest:  # pylint: disable=too-few-public-methods
+        """Simple placeholder for FastMCP's ListToolsRequest type."""
+
+        def __init__(self, *args, **kwargs):  # noqa: D401 - placeholder signature
+            """Initialise the stub request object."""
+
     class FastMCP:  # pylint: disable=too-few-public-methods
         def __init__(self, name):
             self.name = name
+            self._tools = []
+            self._list_tools_handler = None
 
         def tool(self, *_args, **_kwargs):
             def decorator(func):
+                metadata = {
+                    "name": _kwargs.get("name", func.__name__),
+                    "description": _kwargs.get("description", func.__doc__ or ""),
+                }
+                setattr(func, "__mcp_tool__", metadata)
+                self._tools.append(metadata)
                 return func
 
             return decorator
 
+        def list_tools(self, *_args, **_kwargs):
+            def decorator(func):
+                self._list_tools_handler = func
+                return func
+
+            return decorator
+
+        @property
+        def tools(self):  # noqa: D401 - simple stub property
+            """Return the list of registered tool metadata."""
+            return list(self._tools)
+
     fastmcp_stub.FastMCP = FastMCP
+    fastmcp_stub.ListToolsRequest = ListToolsRequest
+
+    requests_module = ModuleType("fastmcp.requests")
+    requests_module.ListToolsRequest = ListToolsRequest
+
+    fastmcp_stub.requests = requests_module
+
     sys.modules["fastmcp"] = fastmcp_stub
+    sys.modules["fastmcp.requests"] = requests_module
 
 
 if "dotenv" not in sys.modules:  # pragma: no cover - testing support only
