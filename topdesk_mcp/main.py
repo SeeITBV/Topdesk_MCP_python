@@ -3,6 +3,7 @@ from topdesk_mcp import _topdesk_sdk as topdesk_sdk
 from dotenv import load_dotenv
 import os
 import logging
+from typing import List, Dict
 
 # Set up logging
 logging.basicConfig(
@@ -79,14 +80,55 @@ def topdesk_get_incidents_by_fiql_query(query: str) -> list:
 
 
 
+def _normalise_title(title: str) -> str:
+    """Normalise and validate an incident title provided by a user."""
+    if title is None:
+        raise ValueError("Incident title must be provided")
+
+    # Collapse whitespace and strip leading/trailing spaces
+    normalised = " ".join(title.split())
+    if not normalised:
+        raise ValueError("Incident title must not be empty")
+    return normalised
+
+
 @mcp.tool()
-def search(query: str) -> list:
-    """Get TOPdesk incidents by FIQL query.
+def search(title: str, max_results: int = 5) -> List[Dict[str, str | None]]:
+    """Search Codex for incidents by their title (briefDescription).
 
     Parameters:
-        query: The FIQL query string to filter incidents.
+        title: The (partial) title of the incident to look up.
+        max_results: Maximum number of matches to return. Defaults to 5.
+
+    Returns:
+        A list of dictionaries containing incident identifiers and summary fields.
     """
-    return topdesk_client.incident.get_list(query=query)
+
+    normalised_title = _normalise_title(title)
+    # Escape double quotes to avoid breaking FIQL queries
+    escaped_title = normalised_title.replace('"', '\\"')
+    fiql_query = f"briefDescription==*{escaped_title}*"
+
+    incidents = topdesk_client.incident.get_list(query=fiql_query)
+
+    results: List[Dict[str, str | None]] = []
+    for incident in incidents[:max_results]:
+        processing_status = incident.get("processingStatus")
+        if isinstance(processing_status, dict):
+            processing_status_value = processing_status.get("name")
+        else:
+            processing_status_value = processing_status
+
+        results.append(
+            {
+                "id": incident.get("id"),
+                "number": incident.get("number"),
+                "title": incident.get("briefDescription"),
+                "processingStatus": processing_status_value,
+            }
+        )
+
+    return results
 
 
 @mcp.tool()
@@ -97,6 +139,9 @@ def fetch(incident_id: str, concise: bool = True) -> dict:
         incident_id: The UUID or incident number of the TOPdesk incident to retrieve.
         concise: Whether to return a concise version of the incident. Defaults to True.
     """
+    if incident_id is None or not str(incident_id).strip():
+        raise ValueError("Incident ID must be provided")
+
     if concise:
         return topdesk_client.incident.get_concise(incident=incident_id)
     else:
