@@ -80,7 +80,33 @@ def _registering_tool(self, *args: Any, **kwargs: Any):
 mcp.tool = MethodType(_registering_tool, mcp)
 
 
-@mcp.list_tools()
+def _register_list_tools(handler):
+    """Register the list tools handler in a version agnostic way."""
+
+    decorator = getattr(mcp, "list_tools", None)
+
+    if callable(decorator):
+        return decorator()(handler)
+
+    for attr_name in ("register_list_tools_handler", "set_list_tools_handler"):
+        registrar = getattr(mcp, attr_name, None)
+        if callable(registrar):
+            registrar(handler)
+            return handler
+
+    get_tools_method = getattr(mcp, "get_tools", None)
+
+    if callable(get_tools_method):
+        def patched_get_tools(self, *args, **kwargs):
+            return handler(*args, **kwargs)
+
+        mcp.get_tools = MethodType(patched_get_tools, mcp)
+        return handler
+
+    raise AttributeError("FastMCP instance does not support list tools registration")
+
+
+@_register_list_tools
 def list_registered_tools(_request: ListToolsRequest | None = None):
     """Return all tools registered with the TOPdesk MCP server."""
 
