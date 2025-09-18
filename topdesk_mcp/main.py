@@ -3,7 +3,20 @@ from topdesk_mcp import _topdesk_sdk as topdesk_sdk
 from dotenv import load_dotenv
 import os
 import logging
-from typing import List, Dict
+from types import MethodType
+from typing import Any, List, Dict
+
+try:  # pragma: no cover - fallback for environments with stubbed FastMCP
+    from fastmcp.requests import ListToolsRequest
+except ImportError:  # pragma: no cover - align with tests that stub fastmcp
+    class ListToolsRequest:  # type: ignore[too-many-ancestors]
+        """Fallback ListToolsRequest used when FastMCP is unavailable."""
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            """Initialise a minimal request placeholder."""
+
+            self.args = args
+            self.kwargs = kwargs
 
 # Set up logging
 logging.basicConfig(
@@ -26,6 +39,83 @@ topdesk_client = topdesk_sdk.connect(TOPDESK_URL, TOPDESK_USERNAME, TOPDESK_PASS
 
 # Initialise the MCP server
 mcp = FastMCP("TOPdesk MCP Server")
+
+_REGISTERED_TOOLS: dict[str, dict[str, Any]] = {}
+_original_tool = mcp.tool
+
+
+def _registering_tool(self, *args: Any, **kwargs: Any):
+    decorator = _original_tool(*args, **kwargs)
+
+    def wrapper(func):
+        registered = decorator(func)
+        metadata = getattr(registered, "__mcp_tool__", None)
+        tool_name = kwargs.get("name") or getattr(registered, "__name__", func.__name__)
+        description = kwargs.get("description")
+        input_schema = kwargs.get("input_schema") or kwargs.get("schema")
+
+        if isinstance(metadata, dict):
+            tool_name = metadata.get("name", tool_name)
+            description = metadata.get("description", description)
+            input_schema = metadata.get("input_schema") or metadata.get("inputSchema") or input_schema
+        else:
+            metadata = None
+
+        if description is None:
+            description = registered.__doc__ or ""
+
+        _REGISTERED_TOOLS[tool_name] = {
+            "callable": registered,
+            "metadata": metadata,
+            "name": tool_name,
+            "description": description,
+            "input_schema": input_schema,
+        }
+
+        return registered
+
+    return wrapper
+
+
+mcp.tool = MethodType(_registering_tool, mcp)
+
+
+@mcp.list_tools()
+def list_registered_tools(_request: ListToolsRequest | None = None):
+    """Return all tools registered with the TOPdesk MCP server."""
+
+    tools = getattr(mcp, "tools", None)
+
+    if callable(tools):  # pragma: no branch - defensive check for callables
+        tools = tools()
+
+    collected: list[Any] = []
+
+    if isinstance(tools, dict):
+        collected = list(tools.values())
+    elif isinstance(tools, (list, tuple, set)):
+        collected = list(tools)
+    elif tools is not None:
+        collected = list(tools)
+
+    if not collected:
+        for tool_info in _REGISTERED_TOOLS.values():
+            metadata = tool_info.get("metadata")
+            if metadata is not None:
+                collected.append(metadata)
+                continue
+
+            tool_entry: dict[str, Any] = {
+                "name": tool_info["name"],
+                "description": tool_info.get("description", ""),
+            }
+
+            if tool_info.get("input_schema") is not None:
+                tool_entry["input_schema"] = tool_info["input_schema"]
+
+            collected.append(tool_entry)
+
+    return collected
 
     
 ###################
