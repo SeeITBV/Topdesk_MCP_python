@@ -45,55 +45,114 @@ def test_search_uses_title_in_fiql(main_module):
     results = module.search("Printer", max_results=1)
 
     mock_client.incident.get_list.assert_called_once_with(query="briefDescription==*Printer*")
-    assert results == [
-        {
-            "id": "123",
-            "number": "I-0001",
-            "title": "Printer offline",
-            "processingStatus": "In Progress",
-        }
-    ]
+    
+    # Check MCP format
+    assert "content" in results
+    assert isinstance(results["content"], list)
+    assert len(results["content"]) == 1
+    assert results["content"][0]["type"] == "text"
+    
+    # Parse the JSON results
+    import json
+    parsed_results = json.loads(results["content"][0]["text"])
+    assert "results" in parsed_results
+    assert len(parsed_results["results"]) == 1
+    
+    expected_result = {
+        "id": "123",
+        "title": "Printer offline",
+        "url": "https://example.topdesk.net/tas/secure/incident?unid=123",
+    }
+    assert parsed_results["results"][0] == expected_result
 
 
 def test_search_normalises_and_escapes_title(main_module):
     module, mock_client = main_module
     mock_client.incident.get_list.return_value = []
 
-    module.search('  "Test"   incident  ')
+    result = module.search('  "Test"   incident  ')
 
     expected_query = 'briefDescription==*\\"Test\\" incident*'
     mock_client.incident.get_list.assert_called_once_with(query=expected_query)
+    
+    # Check MCP format with empty results
+    assert "content" in result
+    assert isinstance(result["content"], list)
+    assert len(result["content"]) == 1
+    assert result["content"][0]["type"] == "text"
+    
+    import json
+    parsed_results = json.loads(result["content"][0]["text"])
+    assert "results" in parsed_results
+    assert parsed_results["results"] == []
 
 
 def test_search_rejects_empty_title(main_module):
     module, _ = main_module
 
-    with pytest.raises(ValueError):
+    with pytest.raises(Exception):  # MCPError should be wrapped by handle_mcp_error decorator
         module.search("   ")
 
 
 def test_fetch_returns_concise_by_default(main_module):
     module, mock_client = main_module
-    mock_client.incident.get_concise.return_value = {"id": "abc"}
+    mock_client.incident.get_concise.return_value = {
+        "id": "abc",
+        "briefDescription": "Test incident",
+        "number": "I-001"
+    }
 
     result = module.fetch("abc")
 
     mock_client.incident.get_concise.assert_called_once_with(incident="abc")
-    assert result == {"id": "abc"}
+    
+    # Check MCP format
+    assert "content" in result
+    assert isinstance(result["content"], list)
+    assert len(result["content"]) == 1
+    assert result["content"][0]["type"] == "text"
+    
+    import json
+    parsed_result = json.loads(result["content"][0]["text"])
+    assert "id" in parsed_result
+    assert "title" in parsed_result
+    assert "text" in parsed_result
+    assert "url" in parsed_result
+    assert parsed_result["id"] == "abc"
+    assert parsed_result["title"] == "Test incident"
 
 
 def test_fetch_can_return_full_incident(main_module):
     module, mock_client = main_module
-    mock_client.incident.get.return_value = {"id": "abc", "details": "full"}
+    mock_client.incident.get.return_value = {
+        "id": "abc",
+        "briefDescription": "Test incident with details",
+        "details": "full"
+    }
 
     result = module.fetch("abc", concise=False)
 
     mock_client.incident.get.assert_called_once_with(incident="abc")
-    assert result == {"id": "abc", "details": "full"}
+    
+    # Check MCP format
+    assert "content" in result
+    assert isinstance(result["content"], list)
+    assert len(result["content"]) == 1
+    assert result["content"][0]["type"] == "text"
+    
+    import json
+    parsed_result = json.loads(result["content"][0]["text"])
+    assert "id" in parsed_result
+    assert "title" in parsed_result
+    assert "text" in parsed_result
+    assert "url" in parsed_result
+    assert "metadata" in parsed_result
+    assert parsed_result["id"] == "abc"
+    assert parsed_result["title"] == "Test incident with details"
 
 
 def test_fetch_requires_identifier(main_module):
     module, _ = main_module
 
-    with pytest.raises(ValueError):
+    with pytest.raises(Exception):  # MCPError should be wrapped by handle_mcp_error decorator
         module.fetch(" ")

@@ -5,6 +5,7 @@ import os
 import logging
 from types import MethodType
 import functools
+import json
 from typing import Any, List, Dict
 
 try:  # pragma: no cover - fallback for environments with stubbed FastMCP
@@ -284,7 +285,7 @@ def _normalise_title(title: str) -> str:
     }
 )
 @handle_mcp_error
-def search(title: str, max_results: int = 5) -> List[Dict[str, str | None]]:
+def search(title: str, max_results: int = 5) -> Dict[str, List[Dict[str, str]]]:
     """Search Codex for incidents by their title (briefDescription).
 
     Parameters:
@@ -292,7 +293,7 @@ def search(title: str, max_results: int = 5) -> List[Dict[str, str | None]]:
         max_results: Maximum number of matches to return. Defaults to 5.
 
     Returns:
-        A list of dictionaries containing incident identifiers and summary fields.
+        MCP-compliant response with content array containing JSON-encoded search results.
     """
 
     normalised_title = _normalise_title(title)
@@ -302,24 +303,31 @@ def search(title: str, max_results: int = 5) -> List[Dict[str, str | None]]:
 
     incidents = topdesk_client.incident.get_list(query=fiql_query)
 
-    results: List[Dict[str, str | None]] = []
+    results: List[Dict[str, str]] = []
     for incident in incidents[:max_results]:
-        processing_status = incident.get("processingStatus")
-        if isinstance(processing_status, dict):
-            processing_status_value = processing_status.get("name")
-        else:
-            processing_status_value = processing_status
+        incident_id = incident.get("id")
+        incident_title = incident.get("briefDescription", "")
+        
+        # Construct URL for the incident in TOPdesk
+        incident_url = f"{TOPDESK_URL}/tas/secure/incident?unid={incident_id}" if incident_id else ""
 
         results.append(
             {
-                "id": incident.get("id"),
-                "number": incident.get("number"),
-                "title": incident.get("briefDescription"),
-                "processingStatus": processing_status_value,
+                "id": incident_id or "",
+                "title": incident_title,
+                "url": incident_url,
             }
         )
 
-    return results
+    # Return in MCP-compliant format
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps({"results": results})
+            }
+        ]
+    }
 
 
 @mcp.tool(
@@ -341,20 +349,70 @@ def search(title: str, max_results: int = 5) -> List[Dict[str, str | None]]:
     }
 )
 @handle_mcp_error
-def fetch(incident_id: str, concise: bool = True) -> dict:
+def fetch(incident_id: str, concise: bool = True) -> Dict[str, List[Dict[str, str]]]:
     """Get a TOPdesk incident by UUID or by Incident Number (I-xxxxxx-xxx). Both formats are accepted.
 
     Parameters:
         incident_id: The UUID or incident number of the TOPdesk incident to retrieve.
         concise: Whether to return a concise version of the incident. Defaults to True.
+
+    Returns:
+        MCP-compliant response with content array containing the incident details.
     """
     if incident_id is None or not str(incident_id).strip():
         raise MCPError("Incident ID must be provided and cannot be empty", -32602)
 
     if concise:
-        return topdesk_client.incident.get_concise(incident=incident_id)
+        incident = topdesk_client.incident.get_concise(incident=incident_id)
     else:
-        return topdesk_client.incident.get(incident=incident_id)
+        incident = topdesk_client.incident.get(incident=incident_id)
+
+    # Extract relevant fields for MCP format
+    incident_id_value = incident.get("id", incident_id)
+    title = incident.get("briefDescription", "")
+    
+    # Construct the text content - combine key fields into readable text
+    text_parts = []
+    if title:
+        text_parts.append(f"Title: {title}")
+    if incident.get("number"):
+        text_parts.append(f"Number: {incident.get('number')}")
+    if incident.get("request"):
+        text_parts.append(f"Request: {incident.get('request')}")
+    if incident.get("processingStatus"):
+        if isinstance(incident.get("processingStatus"), dict):
+            status = incident.get("processingStatus", {}).get("name", "")
+        else:
+            status = str(incident.get("processingStatus"))
+        if status:
+            text_parts.append(f"Status: {status}")
+    
+    text_content = "\n".join(text_parts) if text_parts else json.dumps(incident, indent=2)
+    
+    # Construct URL for the incident
+    url = f"{TOPDESK_URL}/tas/secure/incident?unid={incident_id_value}"
+    
+    # Create metadata with all other incident fields
+    metadata = {k: v for k, v in incident.items() if k not in ["id", "briefDescription"]}
+    
+    # Prepare the result object
+    result = {
+        "id": incident_id_value,
+        "title": title,
+        "text": text_content,
+        "url": url,
+        "metadata": metadata
+    }
+
+    # Return in MCP-compliant format
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(result, indent=2)
+            }
+        ]
+    }
 
 
 @mcp.tool(
