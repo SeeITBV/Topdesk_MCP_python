@@ -84,7 +84,7 @@ def _registering_tool(self, *args: Any, **kwargs: Any):
     def wrapper(func):
         registered = decorator(func)
         metadata = getattr(registered, "__mcp_tool__", None)
-        tool_name = kwargs.get("name") or getattr(registered, "__name__", func.__name__)
+        tool_name = kwargs.get("name") or func.__name__
         description = kwargs.get("description")
 
         if isinstance(metadata, dict):
