@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  topdesk-mcp:
+    build: .
+    ports:
+      - "3030:3030"
+    environment:
+      # Required TOPdesk Configuration
+      - TOPDESK_URL=${TOPDESK_URL:-https://yourcompany.topdesk.net}
+      - TOPDESK_USERNAME=${TOPDESK_USERNAME:-your_username}
+      - TOPDESK_PASSWORD=${TOPDESK_PASSWORD:-your_api_token}
+      
+      # Server Configuration
+      - TOPDESK_MCP_TRANSPORT=streamable-http
+      - TOPDESK_MCP_HOST=0.0.0.0
+      - TOPDESK_MCP_PORT=3030
+      
+      # Optional Configuration  
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:3030/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
