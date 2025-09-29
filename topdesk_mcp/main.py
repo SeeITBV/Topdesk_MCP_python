@@ -18,6 +18,35 @@ except ImportError:  # pragma: no cover - align with tests that stub fastmcp
             self.args = args
             self.kwargs = kwargs
 
+# MCP Error handling utility
+class MCPError(Exception):
+    """Base class for MCP-specific errors."""
+    def __init__(self, message: str, error_code: int = -1):
+        self.message = message
+        self.error_code = error_code
+        super().__init__(message)
+
+def handle_mcp_error(func):
+    """Decorator to handle errors in MCP tools and return proper error format."""
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except MCPError as e:
+            return {
+                "error": {
+                    "code": e.error_code,
+                    "message": e.message
+                }
+            }
+        except Exception as e:
+            return {
+                "error": {
+                    "code": -32603,  # Internal error
+                    "message": f"Internal error: {str(e)}"
+                }
+            }
+    return wrapper
+
 # Set up logging
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", logging.INFO),
@@ -147,31 +176,65 @@ def list_registered_tools(_request: ListToolsRequest | None = None):
 ###################
 # HINTS
 ###################
-@mcp.tool()
+@mcp.tool(
+    description="Get a hint on how to construct FIQL queries, with examples.",
+    input_schema={
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+)
+@handle_mcp_error
 def topdesk_get_fiql_query_howto() -> str:
     """Get a hint on how to construct FIQL queries, with examples."""
     try:
         with open(os.path.join(os.path.dirname(__file__), "resources", "fiql_query_howto.md"), "r", encoding="utf-8") as file:
             return file.read()
     except Exception as e:
-        return "Error reading FIQL query guide: {str(e)}"
+        raise MCPError(f"Error reading FIQL query guide: {str(e)}", -32603)
 
 ##################
 # SCHEMAS
 ##################
-@mcp.tool()
+@mcp.tool(
+    description="Get the full object schemas for TOPdesk incidents and all their subfields.",
+    input_schema={
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+)
+@handle_mcp_error
 def topdesk_get_object_schemas() -> str:
     """Get the full object schemas for TOPdesk incidents and all their subfields."""
     try:
         with open(os.path.join(os.path.dirname(__file__), "resources", "object_schemas.yaml"), "r", encoding="utf-8") as file:
             return file.read()
     except Exception as e:
-        return "Error reading object schemas: {str(e)}"
+        raise MCPError(f"Error reading object schemas: {str(e)}", -32603)
 
 #################
 # INCIDENTS
 #################
-@mcp.tool()
+@mcp.tool(
+    description="Get a TOPdesk incident by UUID or by Incident Number (I-xxxxxx-xxx). Both formats are accepted.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident to retrieve."
+            },
+            "concise": {
+                "type": "boolean",
+                "description": "Whether to return a concise version of the incident.",
+                "default": True
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_incident(incident_id: str, concise: bool = True) -> dict:
     """Get a TOPdesk incident by UUID or by Incident Number (I-xxxxxx-xxx). Both formats are accepted.
 
@@ -179,19 +242,38 @@ def topdesk_get_incident(incident_id: str, concise: bool = True) -> dict:
         incident_id: The UUID or incident number of the TOPdesk incident to retrieve.
         concise: Whether to return a concise version of the incident. Defaults to True.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     if concise:
         return topdesk_client.incident.get_concise(incident=incident_id)
     else:
         return topdesk_client.incident.get(incident=incident_id)
 
 
-@mcp.tool()
+@mcp.tool(
+    description="Get TOPdesk incidents by FIQL query.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The FIQL query string to filter incidents."
+            }
+        },
+        "required": ["query"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_incidents_by_fiql_query(query: str) -> list:
     """Get TOPdesk incidents by FIQL query.
 
     Parameters:
         query: The FIQL query string to filter incidents.
     """
+    if not query or not str(query).strip():
+        raise MCPError("FIQL query must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.get_list(query=query)
 
 
@@ -199,16 +281,36 @@ def topdesk_get_incidents_by_fiql_query(query: str) -> list:
 def _normalise_title(title: str) -> str:
     """Normalise and validate an incident title provided by a user."""
     if title is None:
-        raise ValueError("Incident title must be provided")
+        raise MCPError("Incident title must be provided", -32602)
 
     # Collapse whitespace and strip leading/trailing spaces
     normalised = " ".join(title.split())
     if not normalised:
-        raise ValueError("Incident title must not be empty")
+        raise MCPError("Incident title must not be empty", -32602)
     return normalised
 
 
-@mcp.tool()
+@mcp.tool(
+    description="Search Codex for incidents by their title (briefDescription).",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "The (partial) title of the incident to look up."
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Maximum number of matches to return.",
+                "default": 5,
+                "minimum": 1,
+                "maximum": 100
+            }
+        },
+        "required": ["title"]
+    }
+)
+@handle_mcp_error
 def search(title: str, max_results: int = 5) -> List[Dict[str, str | None]]:
     """Search Codex for incidents by their title (briefDescription).
 
@@ -247,7 +349,25 @@ def search(title: str, max_results: int = 5) -> List[Dict[str, str | None]]:
     return results
 
 
-@mcp.tool()
+@mcp.tool(
+    description="Get a TOPdesk incident by UUID or by Incident Number (I-xxxxxx-xxx). Both formats are accepted.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident to retrieve."
+            },
+            "concise": {
+                "type": "boolean",
+                "description": "Whether to return a concise version of the incident.",
+                "default": True
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def fetch(incident_id: str, concise: bool = True) -> dict:
     """Get a TOPdesk incident by UUID or by Incident Number (I-xxxxxx-xxx). Both formats are accepted.
 
@@ -256,7 +376,7 @@ def fetch(incident_id: str, concise: bool = True) -> dict:
         concise: Whether to return a concise version of the incident. Defaults to True.
     """
     if incident_id is None or not str(incident_id).strip():
-        raise ValueError("Incident ID must be provided")
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
 
     if concise:
         return topdesk_client.incident.get_concise(incident=incident_id)
@@ -264,16 +384,53 @@ def fetch(incident_id: str, concise: bool = True) -> dict:
         return topdesk_client.incident.get(incident=incident_id)
 
 
-@mcp.tool()
+@mcp.tool(
+    description="Get all user requests on a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident whose requests to retrieve."
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_incident_user_requests(incident_id: str) -> list:
     """Get all user requests on a TOPdesk incident.
 
     Parameters:
         incident_id: The UUID or incident number of the TOPdesk incident whose requests to retrieve.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.request.get_list(incident=incident_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Create a new TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "caller_id": {
+                "type": "string",
+                "description": "The ID of the caller creating the incident."
+            },
+            "incident_fields": {
+                "type": "object",
+                "description": "A dictionary of fields for the new incident.",
+                "properties": {
+                    "briefDescription": {"type": "string", "description": "Brief description of the incident"},
+                    "request": {"type": "string", "description": "Detailed description of the incident"}
+                }
+            }
+        },
+        "required": ["caller_id", "incident_fields"]
+    }
+)
+@handle_mcp_error
 def topdesk_create_incident(caller_id: str, incident_fields: dict) -> dict:
     """Create a new TOPdesk incident.
 
@@ -281,6 +438,12 @@ def topdesk_create_incident(caller_id: str, incident_fields: dict) -> dict:
         caller_id: The ID of the caller creating the incident.
         incident_fields: A dictionary of fields for the new incident.
     """
+    if not caller_id or not str(caller_id).strip():
+        raise MCPError("Caller ID must be provided and cannot be empty", -32602)
+    
+    if not incident_fields or not isinstance(incident_fields, dict):
+        raise MCPError("Incident fields must be provided as a dictionary", -32602)
+    
     return topdesk_client.incident.create(caller=caller_id, **incident_fields)
 
 @mcp.tool()
