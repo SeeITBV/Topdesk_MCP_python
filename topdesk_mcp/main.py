@@ -255,12 +255,12 @@ def topdesk_get_incidents_by_fiql_query(query: str) -> list:
 def _normalise_title(title: str) -> str:
     """Normalise and validate an incident title provided by a user."""
     if title is None:
-        raise MCPError("Incident title must be provided", -32602)
+        raise MCPError("Search query must be provided", -32602)
 
     # Collapse whitespace and strip leading/trailing spaces
     normalised = " ".join(title.split())
     if not normalised:
-        raise MCPError("Incident title must not be empty", -32602)
+        raise MCPError("Search query must not be empty", -32602)
     return normalised
 
 
@@ -269,7 +269,7 @@ def _normalise_title(title: str) -> str:
     input_schema={
         "type": "object",
         "properties": {
-            "title": {
+            "query": {
                 "type": "string",
                 "description": "The (partial) title of the incident to look up."
             },
@@ -281,22 +281,22 @@ def _normalise_title(title: str) -> str:
                 "maximum": 100
             }
         },
-        "required": ["title"]
+        "required": ["query"]
     }
 )
 @handle_mcp_error
-def search(title: str, max_results: int = 5) -> Dict[str, List[Dict[str, str]]]:
+def search(query: str, max_results: int = 5) -> Dict[str, List[Dict[str, str]]]:
     """Search Codex for incidents by their title (briefDescription).
 
     Parameters:
-        title: The (partial) title of the incident to look up.
+        query: The (partial) title of the incident to look up.
         max_results: Maximum number of matches to return. Defaults to 5.
 
     Returns:
         MCP-compliant response with content array containing JSON-encoded search results.
     """
 
-    normalised_title = _normalise_title(title)
+    normalised_title = _normalise_title(query)
     # Escape double quotes to avoid breaking FIQL queries
     escaped_title = normalised_title.replace('"', '\\"')
     fiql_query = f"briefDescription==*{escaped_title}*"
