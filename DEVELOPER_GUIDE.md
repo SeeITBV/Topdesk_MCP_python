@@ -92,7 +92,7 @@ Add to your `claude_desktop_config.json`:
 
 ```python
 # Search for incidents
-incidents = search("printer offline", max_results=10)
+incidents = search(query="printer offline", max_results=10)
 
 # Get specific incident
 incident = fetch("I-240101-001")  # or UUID
@@ -302,7 +302,7 @@ For queries returning many results, use pagination:
 incidents = topdesk_get_incidents_by_fiql_query("status=open")  # Handles pagination automatically
 
 # Or use search with max_results
-incidents = search("printer", max_results=50)
+incidents = search(query="printer", max_results=50)
 ```
 
 #### Attachment Processing

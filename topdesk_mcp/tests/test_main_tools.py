@@ -42,7 +42,7 @@ def test_search_uses_title_in_fiql(main_module):
         },
     ]
 
-    results = module.search("Printer", max_results=1)
+    results = module.search(query="Printer", max_results=1)
 
     mock_client.incident.get_list.assert_called_once_with(query="briefDescription==*Printer*")
     
@@ -70,7 +70,7 @@ def test_search_normalises_and_escapes_title(main_module):
     module, mock_client = main_module
     mock_client.incident.get_list.return_value = []
 
-    result = module.search('  "Test"   incident  ')
+    result = module.search(query='  "Test"   incident  ')
 
     expected_query = 'briefDescription==*\\"Test\\" incident*'
     mock_client.incident.get_list.assert_called_once_with(query=expected_query)
@@ -91,7 +91,7 @@ def test_search_rejects_empty_title(main_module):
     module, _ = main_module
 
     with pytest.raises(Exception):  # MCPError should be wrapped by handle_mcp_error decorator
-        module.search("   ")
+        module.search(query="   ")
 
 
 def test_fetch_returns_concise_by_default(main_module):
