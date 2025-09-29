@@ -555,7 +555,24 @@ def topdesk_register_timespent_on_incident(incident_id: str, time_spent: int) ->
     
     return topdesk_client.incident.timespent.register(incident=incident_id, timespent=time_spent)
 
-@mcp.tool()
+@mcp.tool(
+    description="Escalate a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident to escalate."
+            },
+            "reason_id": {
+                "type": "string",
+                "description": "The ID of the escalation reason."
+            }
+        },
+        "required": ["incident_id", "reason_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_escalate_incident(incident_id: str, reason_id: str) -> dict:
     """Escalate a TOPdesk incident.
 
@@ -563,6 +580,12 @@ def topdesk_escalate_incident(incident_id: str, reason_id: str) -> dict:
         incident_id: The UUID or incident number of the TOPdesk incident to escalate.
         reason_id: The ID of the escalation reason.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
+    if not reason_id or not str(reason_id).strip():
+        raise MCPError("Reason ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.escalate(incident=incident_id, reason=reason_id)
 
 @mcp.tool(
@@ -597,7 +620,24 @@ def topdesk_get_available_deescalation_reasons() -> list:
     """
     return topdesk_client.incident.deescalation_reasons()
 
-@mcp.tool()
+@mcp.tool(
+    description="De-escalate a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident to de-escalate."
+            },
+            "reason_id": {
+                "type": "string",
+                "description": "The ID of the de-escalation reason."
+            }
+        },
+        "required": ["incident_id", "reason_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_deescalate_incident(incident_id: str, reason_id: str) -> dict:
     """De-escalate a TOPdesk incident.
 
@@ -605,6 +645,12 @@ def topdesk_deescalate_incident(incident_id: str, reason_id: str) -> dict:
         incident_id: The UUID or incident number of the TOPdesk incident to de-escalate.
         reason_id: The ID of the de-escalation reason.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
+    if not reason_id or not str(reason_id).strip():
+        raise MCPError("Reason ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.deescalate(incident=incident_id, reason_id=reason_id)
 
 @mcp.tool(
@@ -648,31 +694,79 @@ def topdesk_get_progress_trail(incident_id: str, inlineimages: bool=True, force_
         force_images_as_data=force_images_as_data
     )
 
-@mcp.tool()
+@mcp.tool(
+    description="Get all attachments for a TOPdesk incident as base64-encoded data.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident."
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_incident_attachments(incident_id: str) -> list:
     """Get all attachments for a TOPdesk incident.
 
     Parameters:
         incident_id: The UUID or incident number of the TOPdesk incident.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.attachments.download_attachments(incident=incident_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Download and convert all attachments for a TOPdesk incident to Markdown format using intelligent document conversion.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident."
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_incident_attachments_as_markdown(incident_id: str) -> list:
     """Get all attachments for a TOPdesk incident in Markdown format via pytesseract OCR.
 
     Parameters:
         incident_id: The UUID or incident number of the TOPdesk incident.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.attachments.download_attachments_as_markdown(incident=incident_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Get a comprehensive overview of a TOPdesk incident including its details, progress trail, and attachments converted to Markdown.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident."
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_complete_incident_overview(incident_id: str) -> dict:
     """Get a comprehensive overview of a TOPdesk incident including its details, progress trail, and attachments converted to Markdown.
 
     Parameters:
         incident_id: The UUID or incident number of the TOPdesk incident.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     # Get incident details
     incident_details = topdesk_client.incident.get_concise(incident=incident_id)
     
@@ -698,31 +792,79 @@ def topdesk_get_complete_incident_overview(incident_id: str) -> dict:
 ##################
 # OPERATORS
 ##################
-@mcp.tool()
+@mcp.tool(
+    description="Get a list of TOPdesk operator groups that an operator is a member of.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "operator_id": {
+                "type": "string",
+                "description": "The ID of the TOPdesk operator whose groups to retrieve."
+            }
+        },
+        "required": ["operator_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_operatorgroups_of_operator(operator_id: str) -> list:
     """Get a list of TOPdesk operator groups that an op is a member of, optionally by FIQL query or leave blank to return all groups.
 
     Parameters:
         operator_id: The ID of the TOPdesk operator whose groups to retrieve.
     """
+    if not operator_id or not str(operator_id).strip():
+        raise MCPError("Operator ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.operator.get_operatorgroups(operator_id=operator_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Get a TOPdesk operator by ID.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "operator_id": {
+                "type": "string",
+                "description": "The ID of the TOPdesk operator to retrieve."
+            }
+        },
+        "required": ["operator_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_operator(operator_id: str) -> dict:
     """Get a TOPdesk operator by ID.
 
     Parameters:
         operator_id: The ID of the TOPdesk operator to retrieve.
     """
+    if not operator_id or not str(operator_id).strip():
+        raise MCPError("Operator ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.operator.get(id=operator_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Get TOPdesk operators by FIQL query.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The FIQL query string to filter operators."
+            }
+        },
+        "required": ["query"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_operators_by_fiql_query(query: str) -> list:
     """Get TOPdesk operators by FIQL query.
 
     Parameters:
         query: The FIQL query string to filter operators.
     """
+    if not query or not str(query).strip():
+        raise MCPError("FIQL query must be provided and cannot be empty", -32602)
+    
     return topdesk_client.operator.get_list(query=query)
 
 ##################
@@ -788,7 +930,24 @@ def topdesk_get_incident_actions(incident_id: str) -> list:
         incident=incident_id
     )
 
-@mcp.tool()
+@mcp.tool(
+    description="Delete a specific action (ie, reply/comment) for a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident."
+            },
+            "action_id": {
+                "type": "string",
+                "description": "The ID of the action to delete."
+            }
+        },
+        "required": ["incident_id", "action_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_delete_incident_action(incident_id: str, action_id: str) -> dict:
     """Delete a specific action (ie, reply/comment) for a TOPdesk incident.
 
@@ -796,6 +955,12 @@ def topdesk_delete_incident_action(incident_id: str, action_id: str) -> dict:
         incident_id: The UUID or incident number of the TOPdesk incident.
         action_id: The ID of the action to delete.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
+    if not action_id or not str(action_id).strip():
+        raise MCPError("Action ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.action.delete(incident=incident_id, actions_id=action_id)
 
 ################
