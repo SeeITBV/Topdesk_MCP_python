@@ -138,4 +138,13 @@ No complex setup required - works out-of-the-box with Claude Desktop and other M
 
 ---
 
-**Next Steps**: See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for detailed setup instructions or [CODEBASE_DOCUMENTATION.md](CODEBASE_DOCUMENTATION.md) for complete technical details.
+## Next Steps
+
+### For End Users & AI Assistant Users
+- **[MCP Tooling Guide](MCP_TOOLING_GUIDE.md)** - 📚 **START HERE** - Complete guide to all 33 tools with prompting examples
+- **[Quick Reference Guide](MCP_QUICK_REFERENCE.md)** - 🚀 Concise reference for daily use
+
+### For Developers & System Administrators  
+- **[Developer Guide](DEVELOPER_GUIDE.md)** - Setup, configuration, and development workflow
+- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Production deployment and troubleshooting
+- **[Codebase Documentation](CODEBASE_DOCUMENTATION.md)** - Complete technical architecture details
