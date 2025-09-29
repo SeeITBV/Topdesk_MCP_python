@@ -565,7 +565,15 @@ def topdesk_escalate_incident(incident_id: str, reason_id: str) -> dict:
     """
     return topdesk_client.incident.escalate(incident=incident_id, reason=reason_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Get all available escalation reasons for a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+)
+@handle_mcp_error
 def topdesk_get_available_escalation_reasons() -> list:
     """Get all available escalation reasons for a TOPdesk incident.
 
@@ -573,7 +581,15 @@ def topdesk_get_available_escalation_reasons() -> list:
     """
     return topdesk_client.incident.escalation_reasons()
 
-@mcp.tool()
+@mcp.tool(
+    description="Get all available de-escalation reasons for a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+)
+@handle_mcp_error
 def topdesk_get_available_deescalation_reasons() -> list:
     """Get all available de-escalation reasons for a TOPdesk incident.
 
@@ -591,7 +607,30 @@ def topdesk_deescalate_incident(incident_id: str, reason_id: str) -> dict:
     """
     return topdesk_client.incident.deescalate(incident=incident_id, reason_id=reason_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Get the progress trail for a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident."
+            },
+            "inlineimages": {
+                "type": "boolean",
+                "description": "Whether to include inline images in the progress trail.",
+                "default": True
+            },
+            "force_images_as_data": {
+                "type": "boolean",
+                "description": "Whether to force images to be returned as base64 data.",
+                "default": True
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_progress_trail(incident_id: str, inlineimages: bool=True, force_images_as_data: bool=True) -> list:
     """Get the progress trail for a TOPdesk incident.
 
@@ -600,6 +639,9 @@ def topdesk_get_progress_trail(incident_id: str, inlineimages: bool=True, force_
         force_images_as_data: Whether to force images to be returned as base64 data. Defaults to True.
         inlineimages: Whether to include inline images in the progress trail. Defaults to True.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.get_progress_trail(
         incident=incident_id, 
         inlineimages=inlineimages,
@@ -719,13 +761,29 @@ def topdesk_add_action_to_incident(incident_id: str, text: str) -> dict:
     
     return topdesk_client.incident.patch(incident=incident_id, action=text)
 
-@mcp.tool()
+@mcp.tool(
+    description="Get all actions (ie, replies/comments) for a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident."
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_incident_actions(incident_id: str) -> list:
     """Get all actions (ie, replies/comments) for a TOPdesk incident.
 
     Parameters:
         incident_id: The UUID or incident number of the TOPdesk incident.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.action.get_list(
         incident=incident_id
     )
@@ -828,7 +886,30 @@ def topdesk_create_person(person: dict) -> dict:
     
     return topdesk_client.person.create(**person)
 
-@mcp.tool()
+@mcp.tool(
+    description="Update an existing TOPdesk person.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "person_id": {
+                "type": "string",
+                "description": "The ID of the TOPdesk person to update."
+            },
+            "updated_fields": {
+                "type": "object",
+                "description": "A dictionary of fields to update.",
+                "properties": {
+                    "email": {"type": "string", "description": "Email address"},
+                    "firstName": {"type": "string", "description": "First name"},
+                    "surname": {"type": "string", "description": "Surname"},
+                    "telephone": {"type": "string", "description": "Telephone number"}
+                }
+            }
+        },
+        "required": ["person_id", "updated_fields"]
+    }
+)
+@handle_mcp_error
 def topdesk_update_person(person_id: str, updated_fields: dict) -> dict:
     """Update an existing TOPdesk person.
 
@@ -836,9 +917,32 @@ def topdesk_update_person(person_id: str, updated_fields: dict) -> dict:
         person_id: The ID of the TOPdesk person to update.
         updated_fields: A dictionary of fields to update.
     """
+    if not person_id or not str(person_id).strip():
+        raise MCPError("Person ID must be provided and cannot be empty", -32602)
+    
+    if not updated_fields or not isinstance(updated_fields, dict):
+        raise MCPError("Updated fields must be provided as a dictionary", -32602)
+    
     return topdesk_client.person.update(person=person_id, **updated_fields)
 
-@mcp.tool()
+@mcp.tool(
+    description="Archive a TOPdesk person.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "person_id": {
+                "type": "string",
+                "description": "The ID of the TOPdesk person to archive."
+            },
+            "reason_id": {
+                "type": "string",
+                "description": "Optional ID of the archive reason."
+            }
+        },
+        "required": ["person_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_archive_person(person_id: str, reason_id: str = None) -> dict:
     """Archive a TOPdesk person.
 
@@ -846,15 +950,34 @@ def topdesk_archive_person(person_id: str, reason_id: str = None) -> dict:
         person_id: The ID of the TOPdesk person to archive.
         reason_id: Optional ID of the archive reason.
     """
+    if not person_id or not str(person_id).strip():
+        raise MCPError("Person ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.person.archive(person_id=person_id, reason_id=reason_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Unarchive a TOPdesk person.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "person_id": {
+                "type": "string",
+                "description": "The ID of the TOPdesk person to unarchive."
+            }
+        },
+        "required": ["person_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_unarchive_person(person_id: str) -> dict:
     """Unarchive a TOPdesk person.
 
     Parameters:
         person_id: The ID of the TOPdesk person to unarchive.
     """
+    if not person_id or not str(person_id).strip():
+        raise MCPError("Person ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.person.unarchive(person_id=person_id)
 
 def main():
