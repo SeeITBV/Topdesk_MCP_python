@@ -446,34 +446,100 @@ def topdesk_create_incident(caller_id: str, incident_fields: dict) -> dict:
     
     return topdesk_client.incident.create(caller=caller_id, **incident_fields)
 
-@mcp.tool()
+@mcp.tool(
+    description="Archive a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident to archive."
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_archive_incident(incident_id: str) -> dict:
     """Archive a TOPdesk incident.
 
     Parameters:
         incident_id: The UUID or incident number of the TOPdesk incident to archive.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.archive(incident=incident_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Unarchive a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident to unarchive."
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_unarchive_incident(incident_id: str) -> dict:
     """Unarchive a TOPdesk incident.
 
     Parameters:
         incident_id: The UUID or incident number of the TOPdesk incident to unarchive.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.unarchive(incident=incident_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Get all time spent entries for a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident."
+            }
+        },
+        "required": ["incident_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_timespent_on_incident(incident_id: str) -> list:
     """Get all time spent entries for a TOPdesk incident.
 
     Parameters:
         incident_id: The UUID or incident number of the TOPdesk incident.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.timespent.get(incident=incident_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Register time spent on a TOPdesk incident.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident."
+            },
+            "time_spent": {
+                "type": "integer",
+                "description": "Time spent in minutes.",
+                "minimum": 1
+            }
+        },
+        "required": ["incident_id", "time_spent"]
+    }
+)
+@handle_mcp_error
 def topdesk_register_timespent_on_incident(incident_id: str, time_spent: int) -> dict:
     """Register time spent on a TOPdesk incident.
 
@@ -481,6 +547,12 @@ def topdesk_register_timespent_on_incident(incident_id: str, time_spent: int) ->
         incident_id: The UUID or incident number of the TOPdesk incident.
         time_spent: Time spent in minutes.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
+    if not isinstance(time_spent, int) or time_spent < 1:
+        raise MCPError("Time spent must be a positive integer (minutes)", -32602)
+    
     return topdesk_client.incident.timespent.register(incident=incident_id, timespent=time_spent)
 
 @mcp.tool()
@@ -614,7 +686,24 @@ def topdesk_get_operators_by_fiql_query(query: str) -> list:
 ##################
 # ACTIONS
 ##################
-@mcp.tool()
+@mcp.tool(
+    description="Add an action (ie, reply/comment) to a TOPdesk incident. Only HTML formatting is supported.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "incident_id": {
+                "type": "string",
+                "description": "The UUID or incident number of the TOPdesk incident."
+            },
+            "text": {
+                "type": "string",
+                "description": "The HTML-formatted content of the action to add."
+            }
+        },
+        "required": ["incident_id", "text"]
+    }
+)
+@handle_mcp_error
 def topdesk_add_action_to_incident(incident_id: str, text: str) -> dict:
     """Add an action (ie, reply/comment) to a TOPdesk incident. Only HTML formatting is supported.
 
@@ -622,6 +711,12 @@ def topdesk_add_action_to_incident(incident_id: str, text: str) -> dict:
         incident_id: The UUID or incident number of the TOPdesk incident.
         text: The HTML-formatted content of the action to add.
     """
+    if not incident_id or not str(incident_id).strip():
+        raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
+    if not text or not str(text).strip():
+        raise MCPError("Action text must be provided and cannot be empty", -32602)
+    
     return topdesk_client.incident.patch(incident=incident_id, action=text)
 
 @mcp.tool()
@@ -648,31 +743,89 @@ def topdesk_delete_incident_action(incident_id: str, action_id: str) -> dict:
 ################
 # PERSONS
 ################
-@mcp.tool()
+@mcp.tool(
+    description="Get TOPdesk persons by FIQL query.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The FIQL query string to filter persons."
+            }
+        },
+        "required": ["query"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_person_by_query(query: str) -> list:
     """Get TOPdesk persons by FIQL query.
 
     Parameters:
         query: The FIQL query string to filter persons.
     """
+    if not query or not str(query).strip():
+        raise MCPError("FIQL query must be provided and cannot be empty", -32602)
+    
     return topdesk_client.person.get_list(query=query)
 
-@mcp.tool()
+@mcp.tool(
+    description="Get a TOPdesk person by ID.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "person_id": {
+                "type": "string",
+                "description": "The ID of the TOPdesk person to retrieve."
+            }
+        },
+        "required": ["person_id"]
+    }
+)
+@handle_mcp_error
 def topdesk_get_person(person_id: str) -> dict:
     """Get a TOPdesk person by ID.
 
     Parameters:
         person_id: The ID of the TOPdesk person to retrieve.
     """
+    if not person_id or not str(person_id).strip():
+        raise MCPError("Person ID must be provided and cannot be empty", -32602)
+    
     return topdesk_client.person.get(id=person_id)
 
-@mcp.tool()
+@mcp.tool(
+    description="Create a new TOPdesk person.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "person": {
+                "type": "object",
+                "description": "A dictionary of person fields to create.",
+                "properties": {
+                    "email": {"type": "string", "description": "Email address of the person"},
+                    "firstName": {"type": "string", "description": "First name of the person"},
+                    "surname": {"type": "string", "description": "Surname of the person"},
+                    "telephone": {"type": "string", "description": "Telephone number"}
+                },
+                "required": ["email"]
+            }
+        },
+        "required": ["person"]
+    }
+)
+@handle_mcp_error
 def topdesk_create_person(person: dict) -> dict:
     """Create a new TOPdesk person.
 
     Parameters:
         person: A dictionary of person fields to create.
     """
+    if not person or not isinstance(person, dict):
+        raise MCPError("Person fields must be provided as a dictionary", -32602)
+    
+    if not person.get("email"):
+        raise MCPError("Person email is required", -32602)
+    
     return topdesk_client.person.create(**person)
 
 @mcp.tool()
