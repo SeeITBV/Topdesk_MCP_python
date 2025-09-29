@@ -70,6 +70,40 @@ These variables configure the attachment-to-markdown conversion feature to lever
 * The server skeleton was generated using the official MCP server template.
 * Contributions are welcome.
 
+## Deployment
+
+### Quick Start
+```bash
+# Clone and install
+git clone https://github.com/SeeITBV/Topdesk_MCP_python.git
+cd Topdesk_MCP_python
+pip install -e .
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your TOPdesk credentials
+
+# Test deployment
+python scripts/test_deployment.py
+
+# Run server
+topdesk-mcp  # stdio mode
+# or
+TOPDESK_MCP_TRANSPORT=streamable-http topdesk-mcp  # HTTP mode
+```
+
+### Docker Deployment
+```bash
+# Using docker-compose
+docker-compose up -d
+
+# Or build manually
+docker build -t topdesk-mcp .
+docker run -p 3030:3030 -e TOPDESK_URL="..." -e TOPDESK_USERNAME="..." -e TOPDESK_PASSWORD="..." topdesk-mcp
+```
+
+📚 **See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for comprehensive deployment instructions and troubleshooting.**
+
 ## Package Structure
 ```
 topdesk_mcp/  # Directory for the MCP server package
