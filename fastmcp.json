@@ -1,0 +1,8 @@
+{
+  "command": ".\\\\.venv\\\\Scripts\\\\python.exe",
+  "args": ["-m", "topdesk_mcp.main"],
+  "transport": "stdio",
+  "env": {
+    "PYTHONPATH": "."
+  }
+}
