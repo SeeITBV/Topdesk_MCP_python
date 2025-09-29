@@ -84,7 +84,7 @@ def _registering_tool(self, *args: Any, **kwargs: Any):
     def wrapper(func):
         registered = decorator(func)
         metadata = getattr(registered, "__mcp_tool__", None)
-        tool_name = kwargs.get("name") or getattr(registered, "__name__", func.__name__)
+        tool_name = kwargs.get("name") or func.__name__
         description = kwargs.get("description")
 
         if isinstance(metadata, dict):
@@ -335,7 +335,7 @@ def search(query: str, max_results: int = 5) -> Dict[str, List[Dict[str, str]]]:
     input_schema={
         "type": "object",
         "properties": {
-            "incident_id": {
+            "id": {
                 "type": "string",
                 "description": "The UUID or incident number of the TOPdesk incident to retrieve."
             },
@@ -345,30 +345,30 @@ def search(query: str, max_results: int = 5) -> Dict[str, List[Dict[str, str]]]:
                 "default": True
             }
         },
-        "required": ["incident_id"]
+        "required": ["id"]
     }
 )
 @handle_mcp_error
-def fetch(incident_id: str, concise: bool = True) -> Dict[str, List[Dict[str, str]]]:
+def fetch(id: str, concise: bool = True) -> Dict[str, List[Dict[str, str]]]:
     """Get a TOPdesk incident by UUID or by Incident Number (I-xxxxxx-xxx). Both formats are accepted.
 
     Parameters:
-        incident_id: The UUID or incident number of the TOPdesk incident to retrieve.
+        id: The UUID or incident number of the TOPdesk incident to retrieve.
         concise: Whether to return a concise version of the incident. Defaults to True.
 
     Returns:
         MCP-compliant response with content array containing the incident details.
     """
-    if incident_id is None or not str(incident_id).strip():
+    if id is None or not str(id).strip():
         raise MCPError("Incident ID must be provided and cannot be empty", -32602)
 
     if concise:
-        incident = topdesk_client.incident.get_concise(incident=incident_id)
+        incident = topdesk_client.incident.get_concise(incident=id)
     else:
-        incident = topdesk_client.incident.get(incident=incident_id)
+        incident = topdesk_client.incident.get(incident=id)
 
     # Extract relevant fields for MCP format
-    incident_id_value = incident.get("id", incident_id)
+    incident_id_value = incident.get("id", id)
     title = incident.get("briefDescription", "")
     
     # Construct the text content - combine key fields into readable text
