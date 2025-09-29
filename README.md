@@ -178,6 +178,15 @@ topdesk_mcp/  # Directory for the MCP server package
 - **topdesk_unarchive_person**  
   Unarchive a TOPdesk person.
 
+## Documentation
+
+For comprehensive information about this tool:
+
+- **[Codebase Documentation](CODEBASE_DOCUMENTATION.md)** - Complete architecture, design patterns, and technical details
+- **[Developer Guide](DEVELOPER_GUIDE.md)** - Setup, usage examples, and development workflow
+- **[FIQL Query Guide](topdesk_mcp/resources/fiql_query_howto.md)** - TOPdesk query language reference
+- **[Object Schemas](topdesk_mcp/resources/object_schemas.yaml)** - Complete API object definitions
+
 ## References
 - [MCP Protocol Documentation](https://modelcontextprotocol.io/llms-full.txt)
 - [TOPdeskPy SDK](https://github.com/TwinkelToe/TOPdeskPy)
