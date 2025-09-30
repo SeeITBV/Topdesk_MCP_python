@@ -7,17 +7,16 @@ from markitdown import MarkItDown
 
 class incident:
 
-    def __init__(self, topdesk_url, credpair):
+    def __init__(self, topdesk_url, credpair, ssl_verify=True):
         self._topdesk_url = topdesk_url
         self._credpair = credpair
-        self.utils = _utils.utils(self._topdesk_url, self._credpair)
-        self.action = self._action(self._topdesk_url, self._credpair)
-        self.request = self._request(self._topdesk_url, self._credpair)
-        self.timespent = self._timespent(self._topdesk_url, self._credpair)
-        self.attachments = self._attachments(self._topdesk_url, self._credpair)
+        self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
+        self.action = self._action(self._topdesk_url, self._credpair, ssl_verify)
+        self.request = self._request(self._topdesk_url, self._credpair, ssl_verify)
+        self.timespent = self._timespent(self._topdesk_url, self._credpair, ssl_verify)
+        self.attachments = self._attachments(self._topdesk_url, self._credpair, ssl_verify)
         self._logger = logging.getLogger(__name__)
-        self._logger.debug("Incident class initialized with URL: %s", self._topdesk_url)
-        self._logger.debug("Incident class initialized with credentials: %s", self._credpair)
+        self._logger.debug("Incident class initialized")
 
     def get(self, incident):
         if self.utils.is_valid_uuid(incident):
@@ -96,10 +95,10 @@ class incident:
 
     class _action:
         
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API action object initialised.")
 
@@ -125,10 +124,10 @@ class incident:
 
     class _request:
 
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API request object initialised.")
 
@@ -142,22 +141,22 @@ class incident:
         def get(self, incident, request_id, inlineimages=False, non_api_attachments_url=False):
             ext_uri= { 'inlineimages': inlineimages, 'non_api_attachments_url': non_api_attachments_url }
             if self.utils.is_valid_uuid(incident):
-                return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/incidents/id/{}/actions/{}".format(incident, request_id), page_size=10, extended_uri=ext_uri))
+                return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/incidents/id/{}/requests/{}".format(incident, request_id), page_size=10, extended_uri=ext_uri))
             else:
-                return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/incidents/number/{}/actions/{}".format(incident, request_id), page_size=10, extended_uri=ext_uri))
+                return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/incidents/number/{}/requests/{}".format(incident, request_id), page_size=10, extended_uri=ext_uri))
 
         def delete(self, incident, request_id):
             if self.utils.is_valid_uuid(incident):
-                return self.utils.handle_topdesk_response(self.utils.delete_from_topdesk("/tas/api/incidents/id/{}/actions/{}".format(incident, request_id), None))
+                return self.utils.handle_topdesk_response(self.utils.delete_from_topdesk("/tas/api/incidents/id/{}/requests/{}".format(incident, request_id), None))
             else:
-                return self.utils.handle_topdesk_response(self.utils.delete_from_topdesk("/tas/api/incidents/number/{}/actions/{}".format(incident, request_id), None))
+                return self.utils.handle_topdesk_response(self.utils.delete_from_topdesk("/tas/api/incidents/number/{}/requests/{}".format(incident, request_id), None))
 
     class _timespent:
 
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API timespent object initialised.")
 
@@ -178,10 +177,10 @@ class incident:
                 return self.utils.handle_topdesk_response(self.utils.post_to_topdesk("/tas/api/incidents/number/{}/timespent".format(incident), param))
 
     class _attachments:
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._md = MarkItDown(enable_plugins=True)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API attachments object initialised.")

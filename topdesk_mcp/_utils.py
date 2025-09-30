@@ -6,15 +6,37 @@ import base64
 import os
 from markitdown import MarkItDown  # Add this import
 
+# Default timeout for all HTTP requests (in seconds)
+DEFAULT_TIMEOUT = 30
+
+def build_headers(basic_token, *, json_response=True, json_body=False):
+    """
+    Build HTTP headers for TOPdesk API requests.
+    
+    Args:
+        basic_token: Base64-encoded Basic Auth token
+        json_response: If True, add Accept: application/json header
+        json_body: If True, add Content-Type: application/json header
+    
+    Returns:
+        Dictionary of headers
+    """
+    headers = {"Authorization": f"Basic {basic_token}"}
+    if json_response:
+        headers["Accept"] = "application/json"
+    if json_body:
+        headers["Content-Type"] = "application/json"
+    return headers
+
 class utils:
 
-    def __init__(self, topdesk_url, credpair):
+    def __init__(self, topdesk_url, credpair, ssl_verify=True):
         self._topdesk_url = topdesk_url
         self._credpair = credpair
         self._partial_content_container = []
         self._logger = logging.getLogger(__name__)
-        # Set SSL verification based on environment variable
-        self._ssl_verify = os.getenv('SSL_VERIFY', 'true').lower() != 'false'
+        # Use passed ssl_verify parameter instead of reading from env
+        self._ssl_verify = ssl_verify
         if not self._ssl_verify:
             # Disable SSL warnings when verification is disabled
             import urllib3
@@ -52,10 +74,7 @@ class utils:
         """
         Build and send a GET request to the TOPdesk API, handling query parameters robustly.
         """
-        headers = {
-            'Authorization': f"Basic {self._credpair}",
-            "Accept": 'application/json'
-        }
+        headers = build_headers(self._credpair, json_response=True, json_body=False)
         base_url = self._topdesk_url
         params = {}
         # Handle custom_uri as a dict of query params
@@ -83,7 +102,20 @@ class utils:
                 url = f"{base_url}{uri}?{query_string}"
         else:
             url = f"{base_url}{uri}"
-        return requests.get(url, headers=headers, verify=self._ssl_verify)
+        
+        try:
+            return requests.get(url, headers=headers, verify=self._ssl_verify, timeout=DEFAULT_TIMEOUT)
+        except requests.exceptions.RequestException as e:
+            self._logger.error(f"Network error calling Topdesk API: {e.__class__.__name__}")
+            # Return a mock response object with error info
+            class ErrorResponse:
+                def __init__(self, error_msg):
+                    self.status_code = 503
+                    self.text = error_msg
+                    self.headers = {}
+                def json(self):
+                    return {"error": error_msg}
+            return ErrorResponse(f"Network error: {e.__class__.__name__}")
 
     def handle_topdesk_response(self, response):
         """
@@ -212,24 +244,64 @@ class utils:
             return error
         
     def post_to_topdesk(self, uri, json_body):
-        headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-Type': 'application/json'}
-        return requests.post(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
+        headers = build_headers(self._credpair, json_response=True, json_body=True)
+        try:
+            return requests.post(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify, timeout=DEFAULT_TIMEOUT)
+        except requests.exceptions.RequestException as e:
+            self._logger.error(f"Network error calling Topdesk API: {e.__class__.__name__}")
+            class ErrorResponse:
+                def __init__(self, error_msg):
+                    self.status_code = 503
+                    self.text = error_msg
+                    self.headers = {}
+                def json(self):
+                    return {"error": error_msg}
+            return ErrorResponse(f"Network error: {e.__class__.__name__}")
 
     def put_to_topdesk(self, uri, json_body):
-        headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-Type': 'application/json'}
-        return requests.put(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
+        headers = build_headers(self._credpair, json_response=True, json_body=True)
+        try:
+            return requests.put(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify, timeout=DEFAULT_TIMEOUT)
+        except requests.exceptions.RequestException as e:
+            self._logger.error(f"Network error calling Topdesk API: {e.__class__.__name__}")
+            class ErrorResponse:
+                def __init__(self, error_msg):
+                    self.status_code = 503
+                    self.text = error_msg
+                    self.headers = {}
+                def json(self):
+                    return {"error": error_msg}
+            return ErrorResponse(f"Network error: {e.__class__.__name__}")
     
     def patch_to_topdesk(self, uri, json_body):
-        headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-Type': 'application/json'}
-        return requests.patch(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
+        headers = build_headers(self._credpair, json_response=True, json_body=True)
+        try:
+            return requests.patch(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify, timeout=DEFAULT_TIMEOUT)
+        except requests.exceptions.RequestException as e:
+            self._logger.error(f"Network error calling Topdesk API: {e.__class__.__name__}")
+            class ErrorResponse:
+                def __init__(self, error_msg):
+                    self.status_code = 503
+                    self.text = error_msg
+                    self.headers = {}
+                def json(self):
+                    return {"error": error_msg}
+            return ErrorResponse(f"Network error: {e.__class__.__name__}")
 
     def delete_from_topdesk(self, uri, json_body):
-        headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-Type': 'application/json'}
-        return requests.delete(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
+        headers = build_headers(self._credpair, json_response=True, json_body=True)
+        try:
+            return requests.delete(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify, timeout=DEFAULT_TIMEOUT)
+        except requests.exceptions.RequestException as e:
+            self._logger.error(f"Network error calling Topdesk API: {e.__class__.__name__}")
+            class ErrorResponse:
+                def __init__(self, error_msg):
+                    self.status_code = 503
+                    self.text = error_msg
+                    self.headers = {}
+                def json(self):
+                    return {"error": error_msg}
+            return ErrorResponse(f"Network error: {e.__class__.__name__}")
 
     def add_id_list(self, id_list):
         param = []
