@@ -31,6 +31,10 @@ Copy the example environment file and configure:
 cp .env.nl-router .env
 ```
 
+The router supports two connection modes:
+
+#### Option 1: Via MCP Server (Recommended)
+
 Edit `.env` with your MCP server details:
 
 ```env
@@ -38,6 +42,19 @@ MCP_BASE_URL=http://localhost:3030
 MCP_API_KEY=your-api-key-if-needed
 LOG_LEVEL=INFO
 ```
+
+#### Option 2: Direct TOPDESK Connection
+
+For standalone deployment without the MCP server, configure direct TOPDESK access:
+
+```env
+TOPDESK_URL=https://yourcompany.topdesk.net
+TOPDESK_USERNAME=your_username
+TOPDESK_PASSWORD=your_api_token
+LOG_LEVEL=INFO
+```
+
+> **Note**: When TOPDESK credentials are provided, the router will connect directly to TOPDESK API instead of using the MCP server.
 
 ### 3. Start the Router
 

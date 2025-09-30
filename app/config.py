@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     mcp_base_url: str = Field(..., env="MCP_BASE_URL", description="Base URL for the MCP server")
     mcp_api_key: Optional[str] = Field(None, env="MCP_API_KEY", description="API key for MCP server if required")
     
+    # Optional direct TOPDESK connection (alternative to MCP server)
+    topdesk_url: Optional[str] = Field(None, env="TOPDESK_URL", description="Direct TOPDESK instance URL (alternative to MCP server)")
+    topdesk_username: Optional[str] = Field(None, env="TOPDESK_USERNAME", description="TOPDESK username for direct connection")
+    topdesk_password: Optional[str] = Field(None, env="TOPDESK_PASSWORD", description="TOPDESK password/token for direct connection")
+    
     # Optional LLM provider (for future enhancement)
     llm_provider: Optional[str] = Field(None, env="LLM_PROVIDER", description="LLM provider for query enhancement")
     
@@ -48,8 +53,21 @@ class Settings(BaseSettings):
 try:
     settings = Settings()
 except Exception as e:
-    # If settings fail to load (e.g., missing MCP_BASE_URL), create with defaults
+    # If settings fail to load, try with defaults
     import os
-    settings = Settings(
-        mcp_base_url=os.getenv("MCP_BASE_URL", "http://localhost:3030")
-    )
+    # Check if TOPDESK credentials are provided as alternative to MCP server
+    if (os.getenv("TOPDESK_URL") and 
+        os.getenv("TOPDESK_USERNAME") and 
+        os.getenv("TOPDESK_PASSWORD")):
+        # Use direct TOPDESK connection mode
+        settings = Settings(
+            mcp_base_url="direct-topdesk-mode",  # Special value to indicate direct mode
+            topdesk_url=os.getenv("TOPDESK_URL"),
+            topdesk_username=os.getenv("TOPDESK_USERNAME"),
+            topdesk_password=os.getenv("TOPDESK_PASSWORD")
+        )
+    else:
+        # Default to MCP server mode
+        settings = Settings(
+            mcp_base_url=os.getenv("MCP_BASE_URL", "http://localhost:3030")
+        )
