@@ -3,11 +3,11 @@ import re
 
 class operator:
 
-    def __init__(self, topdesk_url, credpair):
+    def __init__(self, topdesk_url, credpair, ssl_verify=True):
         self._topdesk_url = topdesk_url
         self._credpair = credpair
-        self.utils = _utils.utils(self._topdesk_url, self._credpair)
-        self.filters = self._filters(self._topdesk_url, self._credpair)
+        self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
+        self.filters = self._filters(self._topdesk_url, self._credpair, ssl_verify)
         
     def get_list(self, archived=False, page_size=100, query=None):
         return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/operators", archived, page_size, query))
@@ -59,10 +59,10 @@ class operator:
 
     class _filters:
 
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
 
         def get_branch_list(self):
             return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/operators/filters/branch"))

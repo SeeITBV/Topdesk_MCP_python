@@ -1,5 +1,6 @@
 import re, base64
 import logging
+import os
 from topdesk_mcp import _incident
 from topdesk_mcp import _person
 from topdesk_mcp import _utils
@@ -9,33 +10,36 @@ class connect:
     # Created API-version 3.0.5
 
     def __init__(self, topdesk_url, topdesk_username, topdesk_password):
-        self._topdesk_url = topdesk_url
+        self._topdesk_url = topdesk_url.rstrip("/") if topdesk_url else topdesk_url
         self._credpair = (base64.b64encode((topdesk_username + ':' + topdesk_password).encode("utf-8"))).decode("utf-8")
+        # Set SSL verification based on environment variable
+        ssl_env = os.getenv("SSL_VERIFY", "true").lower()
+        self._ssl_verify = ssl_env not in ("false", "0", "no", "off")
         self._partial_content_container = []
-        self.incident = _incident.incident(self._topdesk_url, self._credpair)
-        self.person = _person.person(self._topdesk_url, self._credpair)
-        self.utils = _utils.utils(self._topdesk_url, self._credpair)
-        self.department = self._department(self._topdesk_url, self._credpair)
-        self.branch = self._branch(self._topdesk_url, self._credpair)
-        self.location = self._location(self._topdesk_url, self._credpair)
-        self.supplier = self._supplier(self._topdesk_url, self._credpair)
-        self.operatorgroup = self._operatorgroup(self._topdesk_url, self._credpair)
-        self.operator = _operator.operator(self._topdesk_url, self._credpair)
-        self.budgetholder = self._budgetholder(self._topdesk_url, self._credpair)
-        self.operational_activities = self._operational_activities(self._topdesk_url, self._credpair)
+        self.incident = _incident.incident(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.person = _person.person(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.utils = _utils.utils(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.department = self._department(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.branch = self._branch(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.location = self._location(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.supplier = self._supplier(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.operatorgroup = self._operatorgroup(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.operator = _operator.operator(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.budgetholder = self._budgetholder(self._topdesk_url, self._credpair, self._ssl_verify)
+        self.operational_activities = self._operational_activities(self._topdesk_url, self._credpair, self._ssl_verify)
         self._logger = logging.getLogger(__name__)
         self._logger.debug("TOPdesk API connect object initialised.")
         self._logger.debug("TOPdesk URL: " + self._topdesk_url)
-        self._logger.debug("TOPdesk username: " + topdesk_username)
-        self._logger.debug("TOPdesk password: " + topdesk_password)
-        self._logger.debug("TOPdesk credpair: " + self._credpair)
+        # Do not log credentials
+        if not self._ssl_verify:
+            self._logger.warning("SSL verification is disabled")
 
     class _operatorgroup:
         
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API operatorgroup object initialised.")
         
@@ -72,10 +76,10 @@ class connect:
 
     class _supplier:
 
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API supplier object initialised.")
 
@@ -87,10 +91,10 @@ class connect:
 
     class _location:
 
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API location object initialised.")
         
@@ -101,10 +105,10 @@ class connect:
             return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/locations/id/{}".format(id)))
  
     class _branch:
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API branch object initialised.")
 
@@ -122,10 +126,10 @@ class connect:
             return self.utils.handle_topdesk_response(self.utils.put_to_topdesk("/tas/api/branches/id/{}".format(branche_id), self.utils.add_id_jsonbody(**kwargs)))
             
     class _operational_activities:
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API operational_activities object initialised.")
 
@@ -137,10 +141,10 @@ class connect:
 
     class _department:
 
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API department object initialised.")
 
@@ -153,10 +157,10 @@ class connect:
 
     class _budgetholder:
 
-        def __init__(self, topdesk_url, credpair):
+        def __init__(self, topdesk_url, credpair, ssl_verify=True):
             self._topdesk_url = topdesk_url
             self._credpair = credpair
-            self.utils = _utils.utils(self._topdesk_url, self._credpair)
+            self.utils = _utils.utils(self._topdesk_url, self._credpair, ssl_verify)
             self._logger = logging.getLogger(__name__)
             self._logger.debug("TOPdesk API budgetholder object initialised.")
 
@@ -165,7 +169,7 @@ class connect:
 
         def create(self, name, **kwargs):
             kwargs['name'] = name
-            return self.utils.handle_topdesk_response(self.utils.post_to_topdesk("/tas/api/branches", self.utils.add_id_jsonbody(**kwargs)))
+            return self.utils.handle_topdesk_response(self.utils.post_to_topdesk("/tas/api/budgetholders", self.utils.add_id_jsonbody(**kwargs)))
 
     def get_countries(self):
         return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/countries"))    
