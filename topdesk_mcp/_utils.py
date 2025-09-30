@@ -62,7 +62,8 @@ class utils:
         if custom_uri:
             params.update(custom_uri)
         if page_size:
-            params['page_size'] = page_size
+            # TOPdesk API uses camelCase 'pageSize', not snake_case 'page_size'
+            params['pageSize'] = page_size
         if extended_uri:
             params.update(extended_uri)
         if archived is not None:
@@ -145,17 +146,17 @@ class utils:
 
     def _handle_partial_content(self, response):
         self._partial_content_container += response.json()
-        # Try to extract page_size and start from the URL
-        page_size_match = re.search(r'page_size=(\d+)', response.url)
+        # Try to extract pageSize and pageStart from the URL (TOPdesk uses camelCase)
+        page_size_match = re.search(r'pageSize=(\d+)', response.url)
         page_size = int(page_size_match.group(1)) if page_size_match else 0
-        start_match = re.search(r'start=(\d+)', response.url)
+        start_match = re.search(r'pageStart=(\d+)', response.url)
         current_start = int(start_match.group(1)) if start_match else 0
         new_start = current_start + page_size if page_size else 0
-        # Update or add start param
-        if 'start=' in response.url:
-            next_url = re.sub(r'start=\d+', f'start={new_start}', response.url)
+        # Update or add pageStart param
+        if 'pageStart=' in response.url:
+            next_url = re.sub(r'pageStart=\d+', f'pageStart={new_start}', response.url)
         elif page_size:
-            next_url = re.sub(r'(page_size=\d+)', f"\\1&start={page_size}", response.url)
+            next_url = re.sub(r'(pageSize=\d+)', f"\\1&pageStart={page_size}", response.url)
         else:
             next_url = response.url
         # Remove base url for recursive call
@@ -212,22 +213,22 @@ class utils:
         
     def post_to_topdesk(self, uri, json_body):
         headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-type': 'application/json'}
+            'Content-Type': 'application/json'}
         return requests.post(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
 
     def put_to_topdesk(self, uri, json_body):
         headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-type': 'application/json'}
+            'Content-Type': 'application/json'}
         return requests.put(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
     
     def patch_to_topdesk(self, uri, json_body):
         headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-type': 'application/json'}
+            'Content-Type': 'application/json'}
         return requests.patch(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
 
     def delete_from_topdesk(self, uri, json_body):
         headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-type': 'application/json'}
+            'Content-Type': 'application/json'}
         return requests.delete(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
 
     def add_id_list(self, id_list):
