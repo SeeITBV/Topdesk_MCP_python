@@ -439,7 +439,9 @@ def search(query: str, max_results: int = 5) -> Dict[str, List[Dict[str, str]]]:
     normalised_title = _normalise_title(query)
     # Escape double quotes to avoid breaking FIQL queries
     escaped_title = normalised_title.replace('"', '\\"')
-    fiql_query = f"briefDescription==*{escaped_title}*"
+    # Import quote_value to properly quote FIQL values with Unicode characters
+    from app.fiql import quote_value
+    fiql_query = f"briefDescription=={quote_value(f'*{escaped_title}*')}"
 
     incidents = topdesk_client.incident.get_list(query=fiql_query)
 
