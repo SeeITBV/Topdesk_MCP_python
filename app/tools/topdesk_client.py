@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import random
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import httpx
 from ..config import settings
 from ..security import security_manager

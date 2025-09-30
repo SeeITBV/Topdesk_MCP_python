@@ -97,6 +97,8 @@ def validate_incident_number(value: str) -> str:
         raise ValidationError("Incident number cannot be empty")
     
     # TOPdesk incident numbers typically follow pattern: I-YYMMDD-NNN
+    # Make it case-insensitive
+    value = value.upper()
     pattern = r'^I-\d{6}-\d{3}$'
     if not re.match(pattern, value):
         raise ValidationError(f"Invalid incident number format: {value}. Expected format: I-YYMMDD-NNN")
