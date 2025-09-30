@@ -27,7 +27,7 @@ class TestQueryPlanner:
         # Second step should be incident lookup
         assert plan.steps[1].tool_name == "topdesk_get_incidents_by_fiql_query"
         assert plan.tool_calls[1].name == "topdesk_get_incidents_by_fiql_query"
-        assert "PLACEHOLDER" in plan.tool_calls[1].payload["fiql_query"]
+        assert "PLACEHOLDER" in plan.tool_calls[1].payload["query"]
     
     def test_person_query_single_name(self):
         """Test planning for person query with single name."""
@@ -71,20 +71,20 @@ class TestQueryPlanner:
         assert plan.intent == "Find Change incidents"
         assert len(plan.steps) == 1
         assert plan.tool_calls[0].name == "topdesk_get_incidents_by_fiql_query"
-        assert "category.name=='Change'" in plan.tool_calls[0].payload["fiql_query"]
+        assert "category.name=='Change'" in plan.tool_calls[0].payload["query"]
     
     def test_status_filter_open(self):
         """Test planning with open status filter."""
         plan = self.planner.plan_query("open tickets for John Doe")
         
-        assert "status!=Closed" in plan.tool_calls[1].payload["fiql_query"]
+        assert "status!=Closed" in plan.tool_calls[1].payload["query"]
     
     def test_priority_filter(self):
         """Test planning with priority filter."""
         plan = self.planner.plan_query("high priority incidents last week")
         
         # Should use FIQL query with priority filter
-        fiql_query = plan.tool_calls[0].payload["fiql_query"]
+        fiql_query = plan.tool_calls[0].payload["query"]
         assert "priority.name=in=('High')" in fiql_query or "High" in fiql_query
     
     def test_time_constraint_extraction(self):
@@ -124,7 +124,7 @@ class TestQueryPlanner:
         
         assert plan.intent == "Find incidents matching filters"
         assert len(plan.steps) == 1
-        fiql_query = plan.tool_calls[0].payload["fiql_query"]
+        fiql_query = plan.tool_calls[0].payload["query"]
         
         # Should include priority, status, and time filters
         assert "priority.name" in fiql_query

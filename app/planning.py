@@ -45,7 +45,8 @@ class QueryPlanner:
         ]
         
         self.category_patterns = [
-            r'\b(change|rfc|request\s+for\s+change)s?\b',
+            r'\b(change|rfc|request\s+for\s+change|wijziging|verandering)s?\b',
+            r'\b(wijzigingen|veranderingen)s?\b',  # Dutch plurals
             r'\bcategory\s*[=:]\s*([A-Za-z\s]+)',
         ]
         
@@ -196,7 +197,7 @@ class QueryPlanner:
             match = re.search(pattern, query, re.IGNORECASE)
             if match:
                 category = match.group(1).lower()
-                if 'change' in category or 'rfc' in category:
+                if any(term in category for term in ['change', 'rfc', 'wijziging', 'verandering']):
                     return 'Change'
         return None
     
@@ -272,7 +273,7 @@ class QueryPlanner:
         
         tool_calls.append(ToolCall(
             name="topdesk_get_person_by_query",
-            payload={"fiql_query": person_fiql}
+            payload={"query": person_fiql}
         ))
         
         # Step 2: Get incidents for person
@@ -298,7 +299,7 @@ class QueryPlanner:
         tool_calls.append(ToolCall(
             name="topdesk_get_incidents_by_fiql_query",
             payload={
-                "fiql_query": f"caller.id==PLACEHOLDER;{incident_query}",
+                "query": f"caller.id==PLACEHOLDER;{incident_query}",
                 "page_size": max_results
             }
         ))
@@ -332,7 +333,7 @@ class QueryPlanner:
         
         tool_calls.append(ToolCall(
             name="topdesk_get_operators_by_fiql_query",
-            payload={"fiql_query": operator_fiql}
+            payload={"query": operator_fiql}
         ))
         
         # Step 2: Get incidents for operator
@@ -356,7 +357,7 @@ class QueryPlanner:
         tool_calls.append(ToolCall(
             name="topdesk_get_incidents_by_fiql_query",
             payload={
-                "fiql_query": f"operator.id==PLACEHOLDER;{incident_query}",
+                "query": f"operator.id==PLACEHOLDER;{incident_query}",
                 "page_size": max_results
             }
         ))
@@ -397,7 +398,7 @@ class QueryPlanner:
         tool_calls = [ToolCall(
             name="topdesk_get_incidents_by_fiql_query",
             payload={
-                "fiql_query": fiql_query,
+                "query": fiql_query,
                 "page_size": max_results
             }
         )]
@@ -469,7 +470,7 @@ class QueryPlanner:
         tool_calls = [ToolCall(
             name="topdesk_get_incidents_by_fiql_query", 
             payload={
-                "fiql_query": fiql_query,
+                "query": fiql_query,
                 "page_size": max_results
             }
         )]

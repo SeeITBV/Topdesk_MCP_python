@@ -362,22 +362,33 @@ def topdesk_get_incident(incident_id: str, concise: bool = True) -> dict:
             "query": {
                 "type": "string",
                 "description": "The FIQL query string to filter incidents."
+            },
+            "page_size": {
+                "type": "integer",
+                "description": "Maximum number of incidents to return.",
+                "default": 100,
+                "minimum": 1,
+                "maximum": 1000
             }
         },
         "required": ["query"]
     }
 )
 @handle_mcp_error
-def topdesk_get_incidents_by_fiql_query(query: str) -> list:
+def topdesk_get_incidents_by_fiql_query(query: str, page_size: int = 100) -> list:
     """Get TOPdesk incidents by FIQL query.
 
     Parameters:
         query: The FIQL query string to filter incidents.
+        page_size: Maximum number of incidents to return. Defaults to 100.
     """
     if not query or not str(query).strip():
         raise MCPError("FIQL query must be provided and cannot be empty", -32602)
     
-    return topdesk_client.incident.get_list(query=query)
+    if page_size < 1 or page_size > 1000:
+        raise MCPError("page_size must be between 1 and 1000", -32602)
+    
+    return topdesk_client.incident.get_list(query=query, page_size=page_size)
 
 
 
