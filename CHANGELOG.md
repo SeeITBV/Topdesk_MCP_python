@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Bug Fixes
+
+* **encoding**: Fix "Bad Request" errors when searching with Dutch/French characters (é, ç, ï, ü, etc.) - FIQL queries now properly quote Unicode characters ([ab8247f](https://github.com/SeeITBV/Topdesk_MCP_python/commit/ab8247f))
+
 ## [0.8.1](https://github.com/dbsanfte/topdesk-mcp/compare/v0.8.0...v0.8.1) (2025-07-02)
 
 
