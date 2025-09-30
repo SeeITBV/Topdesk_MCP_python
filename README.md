@@ -33,6 +33,18 @@ This project is a Model Context Protocol (MCP) server implemented in Python. It 
 * `TOPDESK_MCP_TRANSPORT`: (Optional) The transport to use: 'stdio', 'streamable-http', 'sse'. Defaults to 'stdio'.
 * `TOPDESK_MCP_HOST`: (Optional) The host to listen on (for 'streamable-http' and 'sse'). Defaults to '0.0.0.0'.
 * `TOPDESK_MCP_PORT`: (Optional) The port to listen on (for 'streamable-http' and 'sse'). Defaults to '3030'.
+* `LOG_LEVEL`: (Optional) Logging level: 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'INFO'.
+* `LOG_FILE`: (Optional) Path to log file. If not set, logs go to console/stdout.
+
+## 📊 Logging & Monitoring
+
+The server includes comprehensive logging functionality:
+
+- **MCP Tool**: Use `get_log_entries` to retrieve logs programmatically
+- **Web Interface**: When using HTTP transport, access `http://localhost:3030/logging` for a web-based log viewer
+- **JSON API**: Get logs as JSON at `http://localhost:3030/logging/json`
+
+Features include log filtering by level, line limits, and real-time viewing. See [LOGGING_GUIDE.md](LOGGING_GUIDE.md) for detailed documentation.
 
 ### Document Conversion Environment Variables
 Topdesk Attachments can be converted to Markdown format by the tool. 
@@ -121,6 +133,12 @@ topdesk_mcp/  # Directory for the MCP server package
 ```
 
 ## Exposed Tools
+
+- **list_registered_tools**  
+  List all registered MCP tools available in this server.
+
+- **get_log_entries**  
+  Get log entries from the TOPdesk MCP server. Can retrieve recent logs or search by level (DEBUG, INFO, WARNING, ERROR, CRITICAL). Useful for monitoring and debugging.
 
 - **topdesk_get_fiql_query_howto**  
   Get a hint on how to construct FIQL queries, with examples.
