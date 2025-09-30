@@ -56,6 +56,10 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     filename=os.getenv("LOG_FILE", None)
 )
+
+# Store log configuration for later access
+LOG_FILE = os.getenv("LOG_FILE", None)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 load_dotenv()
 
 # Load config from environment variables
@@ -186,6 +190,131 @@ def topdesk_get_object_schemas() -> str:
             return file.read()
     except Exception as e:
         raise MCPError(f"Error reading object schemas: {str(e)}", -32603)
+
+#################
+# LOGGING
+#################
+@mcp.tool(
+    description="Get log entries from the TOPdesk MCP server. Can retrieve recent logs or search by level.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "lines": {
+                "type": "integer",
+                "description": "Number of recent log lines to retrieve (default: 100, max: 1000).",
+                "default": 100
+            },
+            "level": {
+                "type": "string",
+                "description": "Filter logs by level (DEBUG, INFO, WARNING, ERROR, CRITICAL).",
+                "enum": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+            }
+        },
+        "required": []
+    }
+)
+@handle_mcp_error
+def get_log_entries(lines: int = 100, level: str = None) -> dict:
+    """Get log entries from the TOPdesk MCP server.
+    
+    Parameters:
+        lines: Number of recent log lines to retrieve (default: 100, max: 1000).
+        level: Filter logs by level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+    """
+    import re
+    from datetime import datetime
+    
+    # Validate parameters
+    if lines <= 0 or lines > 1000:
+        raise MCPError("Lines parameter must be between 1 and 1000", -32602)
+    
+    log_entries = []
+    
+    # If no log file is configured, return in-memory logs or current status
+    if not LOG_FILE:
+        return {
+            "message": "No log file configured (LOG_FILE environment variable not set)",
+            "configuration": {
+                "log_file": LOG_FILE,
+                "log_level": LOG_LEVEL,
+                "current_time": datetime.now().isoformat()
+            },
+            "entries": [],
+            "note": "Logs are being written to console/stdout. Configure LOG_FILE environment variable to enable file-based logging."
+        }
+    
+    try:
+        # Check if log file exists
+        import os
+        if not os.path.exists(LOG_FILE):
+            return {
+                "message": f"Log file not found: {LOG_FILE}",
+                "configuration": {
+                    "log_file": LOG_FILE,
+                    "log_level": LOG_LEVEL,
+                    "current_time": datetime.now().isoformat()
+                },
+                "entries": [],
+                "note": "Log file may not have been created yet. Try running some operations first."
+            }
+        
+        # Read log file
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            all_lines = f.readlines()
+        
+        # Get the last N lines
+        recent_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
+        
+        # Parse log entries
+        log_pattern = r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - ([^-]+) - (\w+) - (.*)$'
+        
+        for line in recent_lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            match = re.match(log_pattern, line)
+            if match:
+                timestamp, logger_name, log_level_entry, message = match.groups()
+                
+                # Filter by level if specified
+                if level and log_level_entry != level:
+                    continue
+                
+                log_entries.append({
+                    "timestamp": timestamp,
+                    "logger": logger_name.strip(),
+                    "level": log_level_entry,
+                    "message": message
+                })
+            else:
+                # Handle multi-line log entries or malformed lines
+                if log_entries:
+                    # Append to the last entry's message
+                    log_entries[-1]["message"] += "\\n" + line
+                else:
+                    # Add as a raw entry
+                    log_entries.append({
+                        "timestamp": datetime.now().isoformat(),
+                        "logger": "raw",
+                        "level": "INFO",
+                        "message": line
+                    })
+        
+        return {
+            "configuration": {
+                "log_file": LOG_FILE,
+                "log_level": LOG_LEVEL,
+                "total_lines_in_file": len(all_lines),
+                "lines_requested": lines,
+                "lines_returned": len(log_entries),
+                "level_filter": level
+            },
+            "entries": log_entries
+        }
+        
+    except Exception as e:
+        raise MCPError(f"Error reading log file: {str(e)}", -32603)
 
 #################
 # INCIDENTS
@@ -1185,10 +1314,316 @@ def main():
     if transport not in ["stdio", "streamable-http", "sse"]:
         raise ValueError("Invalid transport type. Choose 'stdio', 'streamable-http', or 'sse'.")
     
+    # Add logging endpoint for HTTP transports
+    if transport in ["streamable-http", "sse"]:
+        _add_logging_endpoint(mcp, host, port)
+    
     if transport == "stdio":
         mcp.run()    
     else:
         mcp.run(transport=transport, host=host, port=port)
+
+def _add_logging_endpoint(mcp_instance, host: str, port: int):
+    """Add a /logging endpoint for HTTP transports."""
+    try:
+        # Try to access the underlying FastAPI app if available
+        if hasattr(mcp_instance, 'app'):
+            app = mcp_instance.app
+            
+            @app.get("/logging")
+            async def get_logs(lines: int = 100, level: str = None):
+                """HTTP endpoint to access logs."""
+                try:
+                    result = get_log_entries(lines, level)
+                    
+                    # Return HTML page
+                    html_content = _generate_log_html(result)
+                    from fastapi.responses import HTMLResponse
+                    return HTMLResponse(content=html_content)
+                    
+                except Exception as e:
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=500,
+                        content={"error": f"Failed to retrieve logs: {str(e)}"}
+                    )
+            
+            @app.get("/logging/json")
+            async def get_logs_json(lines: int = 100, level: str = None):
+                """HTTP endpoint to access logs as JSON."""
+                try:
+                    result = get_log_entries(lines, level)
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(content=result)
+                except Exception as e:
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=500,
+                        content={"error": f"Failed to retrieve logs: {str(e)}"}
+                    )
+                    
+            print(f"✅ Logging endpoints added:")
+            print(f"   📊 HTML: http://{host}:{port}/logging")
+            print(f"   📋 JSON: http://{host}:{port}/logging/json")
+            
+    except Exception as e:
+        # Fallback: just log that we couldn't add the endpoint
+        print(f"⚠️  Could not add logging endpoint: {e}")
+        print(f"📝 Logs are still accessible via the 'get_log_entries' MCP tool")
+
+def _generate_log_html(log_data: dict) -> str:
+    """Generate HTML page for displaying logs."""
+    config = log_data.get('configuration', {})
+    entries = log_data.get('entries', [])
+    message = log_data.get('message', '')
+    note = log_data.get('note', '')
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>TOPdesk MCP Server - Logs</title>
+        <style>
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background-color: #f5f5f5;
+                color: #333;
+            }}
+            .container {{
+                max-width: 1200px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                overflow: hidden;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 20px;
+                text-align: center;
+            }}
+            .header h1 {{
+                margin: 0;
+                font-size: 28px;
+            }}
+            .controls {{
+                padding: 20px;
+                border-bottom: 1px solid #eee;
+                background: #fafafa;
+            }}
+            .controls form {{
+                display: flex;
+                gap: 15px;
+                align-items: center;
+                flex-wrap: wrap;
+            }}
+            .controls label {{
+                font-weight: 600;
+            }}
+            .controls input, .controls select {{
+                padding: 8px 12px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                font-size: 14px;
+            }}
+            .controls button {{
+                background: #667eea;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 600;
+                transition: background 0.2s;
+            }}
+            .controls button:hover {{
+                background: #5a67d8;
+            }}
+            .info {{
+                padding: 20px;
+                background: #e6f3ff;
+                border-left: 4px solid #2196F3;
+                margin: 0;
+            }}
+            .info h3 {{
+                margin-top: 0;
+                color: #1976D2;
+            }}
+            .info p {{
+                margin: 5px 0;
+                font-size: 14px;
+            }}
+            .warning {{
+                padding: 20px;
+                background: #fff3cd;
+                border-left: 4px solid #ffc107;
+                margin: 0;
+            }}
+            .warning h3 {{
+                margin-top: 0;
+                color: #856404;
+            }}
+            .logs {{
+                padding: 20px;
+            }}
+            .log-entry {{
+                display: flex;
+                padding: 12px;
+                border-bottom: 1px solid #eee;
+                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                font-size: 13px;
+                line-height: 1.4;
+            }}
+            .log-entry:hover {{
+                background: #f8f9fa;
+            }}
+            .log-timestamp {{
+                color: #666;
+                width: 180px;
+                flex-shrink: 0;
+                font-weight: 500;
+            }}
+            .log-level {{
+                width: 80px;
+                flex-shrink: 0;
+                font-weight: bold;
+                text-align: center;
+                padding: 2px 6px;
+                border-radius: 3px;
+                margin-right: 10px;
+            }}
+            .log-level.DEBUG {{ background: #e3f2fd; color: #1976d2; }}
+            .log-level.INFO {{ background: #e8f5e8; color: #2e7d2e; }}
+            .log-level.WARNING {{ background: #fff3e0; color: #f57c00; }}
+            .log-level.ERROR {{ background: #ffebee; color: #d32f2f; }}
+            .log-level.CRITICAL {{ background: #fce4ec; color: #c2185b; }}
+            .log-logger {{
+                color: #7b1fa2;
+                width: 150px;
+                flex-shrink: 0;
+                margin-right: 10px;
+            }}
+            .log-message {{
+                flex: 1;
+                word-break: break-word;
+            }}
+            .empty {{
+                text-align: center;
+                padding: 60px 20px;
+                color: #666;
+            }}
+            .empty h3 {{
+                margin-top: 0;
+            }}
+            .json-link {{
+                text-align: center;
+                padding: 20px;
+                border-top: 1px solid #eee;
+                background: #fafafa;
+            }}
+            .json-link a {{
+                color: #667eea;
+                text-decoration: none;
+                font-weight: 600;
+            }}
+            .json-link a:hover {{
+                text-decoration: underline;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>📊 TOPdesk MCP Server Logs</h1>
+            </div>
+            
+            <div class="controls">
+                <form method="get">
+                    <label for="lines">Lines:</label>
+                    <input type="number" id="lines" name="lines" value="{config.get('lines_requested', 100)}" min="1" max="1000">
+                    
+                    <label for="level">Level:</label>
+                    <select id="level" name="level">
+                        <option value="">All Levels</option>
+                        <option value="DEBUG" {"selected" if config.get('level_filter') == 'DEBUG' else ""}>DEBUG</option>
+                        <option value="INFO" {"selected" if config.get('level_filter') == 'INFO' else ""}>INFO</option>
+                        <option value="WARNING" {"selected" if config.get('level_filter') == 'WARNING' else ""}>WARNING</option>
+                        <option value="ERROR" {"selected" if config.get('level_filter') == 'ERROR' else ""}>ERROR</option>
+                        <option value="CRITICAL" {"selected" if config.get('level_filter') == 'CRITICAL' else ""}>CRITICAL</option>
+                    </select>
+                    
+                    <button type="submit">Refresh Logs</button>
+                </form>
+            </div>
+    """
+    
+    if message or note:
+        html += f"""
+            <div class="warning">
+                <h3>⚠️ Notice</h3>
+                {f"<p>{message}</p>" if message else ""}
+                {f"<p>{note}</p>" if note else ""}
+            </div>
+        """
+    
+    if config:
+        html += f"""
+            <div class="info">
+                <h3>ℹ️ Configuration</h3>
+                <p><strong>Log File:</strong> {config.get('log_file', 'Not configured')}</p>
+                <p><strong>Log Level:</strong> {config.get('log_level', 'INFO')}</p>
+                <p><strong>Total Lines in File:</strong> {config.get('total_lines_in_file', 'N/A')}</p>
+                <p><strong>Lines Returned:</strong> {config.get('lines_returned', len(entries))}</p>
+                {f"<p><strong>Level Filter:</strong> {config.get('level_filter')}</p>" if config.get('level_filter') else ""}
+            </div>
+        """
+    
+    if entries:
+        html += """
+            <div class="logs">
+        """
+        for entry in entries:
+            level_class = entry.get('level', 'INFO')
+            html += f"""
+                <div class="log-entry">
+                    <div class="log-timestamp">{entry.get('timestamp', '')}</div>
+                    <div class="log-level {level_class}">{level_class}</div>
+                    <div class="log-logger">{entry.get('logger', '')}</div>
+                    <div class="log-message">{entry.get('message', '').replace('<', '&lt;').replace('>', '&gt;')}</div>
+                </div>
+            """
+        html += """
+            </div>
+        """
+    else:
+        html += """
+            <div class="empty">
+                <h3>📭 No Log Entries Found</h3>
+                <p>No log entries match your current filters, or logging may not be configured properly.</p>
+            </div>
+        """
+    
+    html += """
+            <div class="json-link">
+                <a href="/logging/json">📋 View as JSON</a>
+            </div>
+        </div>
+        
+        <script>
+            // Auto-refresh every 30 seconds if user wants it
+            // setInterval(() => window.location.reload(), 30000);
+        </script>
+    </body>
+    </html>
+    """
+    
+    return html
 
 if __name__ == "__main__":
     main()
