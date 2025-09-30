@@ -141,15 +141,15 @@ class incident:
         def get(self, incident, request_id, inlineimages=False, non_api_attachments_url=False):
             ext_uri= { 'inlineimages': inlineimages, 'non_api_attachments_url': non_api_attachments_url }
             if self.utils.is_valid_uuid(incident):
-                return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/incidents/id/{}/actions/{}".format(incident, request_id), page_size=10, extended_uri=ext_uri))
+                return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/incidents/id/{}/requests/{}".format(incident, request_id), page_size=10, extended_uri=ext_uri))
             else:
-                return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/incidents/number/{}/actions/{}".format(incident, request_id), page_size=10, extended_uri=ext_uri))
+                return self.utils.handle_topdesk_response(self.utils.request_topdesk("/tas/api/incidents/number/{}/requests/{}".format(incident, request_id), page_size=10, extended_uri=ext_uri))
 
         def delete(self, incident, request_id):
             if self.utils.is_valid_uuid(incident):
-                return self.utils.handle_topdesk_response(self.utils.delete_from_topdesk("/tas/api/incidents/id/{}/actions/{}".format(incident, request_id), None))
+                return self.utils.handle_topdesk_response(self.utils.delete_from_topdesk("/tas/api/incidents/id/{}/requests/{}".format(incident, request_id), None))
             else:
-                return self.utils.handle_topdesk_response(self.utils.delete_from_topdesk("/tas/api/incidents/number/{}/actions/{}".format(incident, request_id), None))
+                return self.utils.handle_topdesk_response(self.utils.delete_from_topdesk("/tas/api/incidents/number/{}/requests/{}".format(incident, request_id), None))
 
     class _timespent:
 
