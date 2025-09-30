@@ -213,22 +213,22 @@ class utils:
         
     def post_to_topdesk(self, uri, json_body):
         headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-type': 'application/json'}
+            'Content-Type': 'application/json'}
         return requests.post(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
 
     def put_to_topdesk(self, uri, json_body):
         headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-type': 'application/json'}
+            'Content-Type': 'application/json'}
         return requests.put(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
     
     def patch_to_topdesk(self, uri, json_body):
         headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-type': 'application/json'}
+            'Content-Type': 'application/json'}
         return requests.patch(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
 
     def delete_from_topdesk(self, uri, json_body):
         headers = {'Authorization':"Basic {}".format(self._credpair), "Accept":'application/json', \
-            'Content-type': 'application/json'}
+            'Content-Type': 'application/json'}
         return requests.delete(self._topdesk_url + uri, headers=headers, json=json_body, verify=self._ssl_verify)
 
     def add_id_list(self, id_list):
