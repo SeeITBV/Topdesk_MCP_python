@@ -7,7 +7,14 @@ requires-python = ">=3.11"
 dependencies = [
   "fastmcp",
   "requests",
-  "markitdown"
+  "markitdown",
+  # New dependencies for NL router
+  "fastapi>=0.104.0",
+  "uvicorn>=0.24.0",
+  "httpx>=0.25.0",
+  "pydantic>=2.0.0",
+  "pydantic-settings>=2.0.0",
+  "python-dotenv>=1.0.0"
 ]
 
 [build-system]
@@ -22,6 +29,7 @@ allow-insecure-host = [
 
 [project.scripts]
 topdesk-mcp = "topdesk_mcp.main:main"
+topdesk-nl-router = "app.main:app"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -41,6 +49,9 @@ markers = [
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
+    "ruff>=0.1.0",
+    "black>=23.0.0"
 ]
 
 [tool.coverage.run]
