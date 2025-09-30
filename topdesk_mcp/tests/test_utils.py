@@ -158,7 +158,8 @@ class TestUtils:
     def test_handle_partial_content(self, mock_handle, mock_request, utils_instance, mock_response):
         """Test handling partial content pagination."""
         mock_response.json.return_value = [{"id": 1}, {"id": 2}]
-        mock_response.url = "https://test.topdesk.net/tas/api/test?page_size=10&start=0"
+        # TOPdesk API uses camelCase: pageSize and pageStart
+        mock_response.url = "https://test.topdesk.net/tas/api/test?pageSize=10&pageStart=0"
         
         mock_next_response = Mock()
         mock_request.return_value = mock_next_response
@@ -257,6 +258,23 @@ class TestUtils:
         
         mock_get.assert_called_once()
 
+    @patch('topdesk_mcp._utils.requests.get')
+    def test_request_topdesk_uses_camelcase_pagesize(self, mock_get, utils_instance, mock_response):
+        """Test that request_topdesk uses camelCase 'pageSize' parameter per TOPdesk API spec."""
+        mock_get.return_value = mock_response
+        
+        utils_instance.request_topdesk("/tas/api/incidents", page_size=100)
+        
+        # Verify the call was made
+        mock_get.assert_called_once()
+        
+        # Get the actual URL that was called
+        called_url = mock_get.call_args[0][0]
+        
+        # Verify that 'pageSize' (camelCase) is in the URL, not 'page_size' (snake_case)
+        assert 'pageSize=100' in called_url, f"Expected 'pageSize=100' in URL, got: {called_url}"
+        assert 'page_size' not in called_url, f"Should not use 'page_size', got: {called_url}"
+
     @patch('topdesk_mcp._utils.requests.patch')
     def test_patch_to_topdesk(self, mock_patch, utils_instance, mock_response):
         """Test PATCH request to TOPdesk."""
@@ -306,12 +324,13 @@ class TestUtils:
             assert len(utils_instance._partial_content_container) == 1
 
     def test_handle_partial_content_existing_start_param(self, utils_instance, mock_response):
-        """Test handling partial content with existing start parameter."""
+        """Test handling partial content with existing pageStart parameter."""
         with patch.object(utils_instance, 'request_topdesk') as mock_request, \
              patch.object(utils_instance, 'handle_topdesk_response') as mock_handle:
             
             mock_response.json.return_value = [{"id": 1}]
-            mock_response.url = "https://test.topdesk.net/tas/api/test?start=0&page_size=10"
+            # TOPdesk API uses camelCase: pageSize and pageStart
+            mock_response.url = "https://test.topdesk.net/tas/api/test?pageStart=0&pageSize=10"
             
             mock_next_response = Mock()
             mock_request.return_value = mock_next_response
