@@ -76,83 +76,31 @@ topdesk_client = topdesk_sdk.connect(TOPDESK_URL, TOPDESK_USERNAME, TOPDESK_PASS
 # Initialise the MCP server
 mcp = FastMCP("TOPdesk MCP Server")
 
-_REGISTERED_TOOLS: dict[str, dict[str, Any]] = {}
+# Wrap the tool decorator to remove unsupported parameters
 _original_tool = mcp.tool
 
+def _tool_wrapper(*args: Any, **kwargs: Any):
+    """Wrapper to remove unsupported parameters from tool decorator."""
+    # Remove input_schema as FastMCP doesn't support it
+    kwargs.pop('input_schema', None)
+    return _original_tool(*args, **kwargs)
 
-def _registering_tool(self, *args: Any, **kwargs: Any):
-    # Remove input_schema from kwargs as FastMCP doesn't support it
-    filtered_kwargs = {k: v for k, v in kwargs.items() if k != "input_schema"}
-    decorator = _original_tool(*args, **filtered_kwargs)
-
-    def wrapper(func):
-        registered = decorator(func)
-        metadata = getattr(registered, "__mcp_tool__", None)
-        tool_name = kwargs.get("name") or func.__name__
-        description = kwargs.get("description")
-
-        if isinstance(metadata, dict):
-            tool_name = metadata.get("name", tool_name)
-            description = metadata.get("description", description)
-        else:
-            metadata = None
-
-        if description is None:
-            description = registered.__doc__ or ""
-
-        _REGISTERED_TOOLS[tool_name] = {
-            "callable": registered,
-            "metadata": metadata,
-            "name": tool_name,
-            "description": description,
-        }
-
-        return registered
-
-    return wrapper
-
-
-mcp.tool = MethodType(_registering_tool, mcp)
-
-
-def _register_list_tools(handler):
-    """Register the list tools handler in a version agnostic way."""
-    # For now, just create a simple tool instead of complex registration
-    return handler
-
+mcp.tool = _tool_wrapper
 
 # Create a simple tool to list registered tools
 @mcp.tool(description="List all registered MCP tools available in this server")
-def list_registered_tools() -> List[Dict[str, Any]]:
+async def list_registered_tools() -> List[Dict[str, Any]]:
     """Return all tools registered with the TOPdesk MCP server."""
-
-    tools = getattr(mcp, "tools", None)
-
-    if callable(tools):  # pragma: no branch - defensive check for callables
-        tools = tools()
-
+    tools = await mcp.get_tools()
+    
     collected: list[Any] = []
-
-    if isinstance(tools, dict):
-        collected = list(tools.values())
-    elif isinstance(tools, (list, tuple, set)):
-        collected = list(tools)
-    elif tools is not None:
-        collected = list(tools)
-
-    if not collected:
-        for tool_info in _REGISTERED_TOOLS.values():
-            metadata = tool_info.get("metadata")
-            if metadata is not None:
-                collected.append(metadata)
-                continue
-
-            tool_entry: dict[str, Any] = {
-                "name": tool_info["name"],
-                "description": tool_info.get("description", ""),
-            }
-
-            collected.append(tool_entry)
+    
+    for tool_name, tool_obj in tools.items():
+        tool_entry: dict[str, Any] = {
+            "name": tool_name,
+            "description": getattr(tool_obj, 'description', ''),
+        }
+        collected.append(tool_entry)
 
     return collected
 
@@ -1330,7 +1278,7 @@ async def http_get_logs(request: Request):
     try:
         lines = int(request.query_params.get('lines', 100))
         level = request.query_params.get('level', None)
-        result = get_log_entries(lines, level)
+        result = get_log_entries.fn(lines=lines, level=level)
         
         # Return HTML page
         html_content = _generate_log_html(result)
@@ -1349,7 +1297,7 @@ async def http_get_logs_json(request: Request):
     try:
         lines = int(request.query_params.get('lines', 100))
         level = request.query_params.get('level', None)
-        result = get_log_entries(lines, level)
+        result = get_log_entries.fn(lines=lines, level=level)
         return JSONResponse(content=result)
     except Exception as e:
         traceback.print_exc()
@@ -1362,7 +1310,8 @@ async def http_get_logs_json(request: Request):
 async def http_get_tools(request: Request):
     """HTTP endpoint to list all available MCP tools."""
     try:
-        tools = list_registered_tools()
+        # Call the actual function from the FunctionTool
+        tools = await list_registered_tools.fn()
         return JSONResponse(content={
             "status": "success",
             "count": len(tools),
@@ -1422,7 +1371,7 @@ async def http_test_incidents_api(request: Request):
     """HTTP endpoint to test incident listing."""
     try:
         # Get recent incidents (limited to 5 for testing)
-        incidents = topdesk_client.incidents.get_list(page_size=5)
+        incidents = topdesk_client.incident.get_list(page_size=5)
         
         # Format incidents for display
         formatted_incidents = []
