@@ -1327,17 +1327,17 @@ def main():
     if transport not in ["stdio", "streamable-http", "sse"]:
         raise ValueError("Invalid transport type. Choose 'stdio', 'streamable-http', or 'sse'.")
     
-    # Add logging endpoint for HTTP transports
+    # Add HTTP endpoints for HTTP transports
     if transport in ["streamable-http", "sse"]:
-        _add_logging_endpoint(mcp, host, port)
+        _add_http_endpoints(mcp, host, port)
     
     if transport == "stdio":
         mcp.run()    
     else:
         mcp.run(transport=transport, host=host, port=port)
 
-def _add_logging_endpoint(mcp_instance, host: str, port: int):
-    """Add a /logging endpoint for HTTP transports."""
+def _add_http_endpoints(mcp_instance, host: str, port: int):
+    """Add HTTP endpoints for HTTP transports."""
     try:
         # Try to access the underlying FastAPI app if available
         if hasattr(mcp_instance, 'app'):
@@ -1374,15 +1374,76 @@ def _add_logging_endpoint(mcp_instance, host: str, port: int):
                         status_code=500,
                         content={"error": f"Failed to retrieve logs: {str(e)}"}
                     )
+            
+            @app.get("/tools")
+            async def get_tools():
+                """HTTP endpoint to list all available MCP tools."""
+                try:
+                    tools = list_registered_tools()
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(content={
+                        "status": "success",
+                        "count": len(tools),
+                        "tools": tools
+                    })
+                except Exception as e:
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=500,
+                        content={"error": f"Failed to retrieve tools: {str(e)}"}
+                    )
+            
+            @app.get("/test")
+            async def test_connection():
+                """HTTP endpoint to test TOPdesk connection."""
+                try:
+                    # Return HTML test page
+                    html_content = _generate_test_html(host, port)
+                    from fastapi.responses import HTMLResponse
+                    return HTMLResponse(content=html_content)
+                except Exception as e:
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=500,
+                        content={"error": f"Failed to generate test page: {str(e)}"}
+                    )
+            
+            @app.get("/test/connection")
+            async def test_connection_api():
+                """HTTP endpoint to test TOPdesk connection API."""
+                try:
+                    # Try to make a simple API call to test connection
+                    result = topdesk_client.get_countries()
+                    return {
+                        "status": "success",
+                        "message": "Successfully connected to TOPdesk",
+                        "topdesk_url": TOPDESK_URL,
+                        "username": TOPDESK_USERNAME,
+                        "test_result": f"Retrieved {len(result) if isinstance(result, list) else 'N/A'} countries"
+                    }
+                except Exception as e:
+                    from fastapi.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=500,
+                        content={
+                            "status": "error",
+                            "message": f"Failed to connect to TOPdesk: {str(e)}",
+                            "topdesk_url": TOPDESK_URL,
+                            "username": TOPDESK_USERNAME
+                        }
+                    )
                     
-            print(f"✅ Logging endpoints added:")
-            print(f"   📊 HTML: http://{host}:{port}/logging")
-            print(f"   📋 JSON: http://{host}:{port}/logging/json")
+            print(f"✅ HTTP endpoints added:")
+            print(f"   📊 Logging (HTML): http://{host}:{port}/logging")
+            print(f"   📋 Logging (JSON): http://{host}:{port}/logging/json")
+            print(f"   🔧 Tools List: http://{host}:{port}/tools")
+            print(f"   🧪 Test Page: http://{host}:{port}/test")
+            print(f"   🔌 Test Connection API: http://{host}:{port}/test/connection")
             
     except Exception as e:
         # Fallback: just log that we couldn't add the endpoint
-        print(f"⚠️  Could not add logging endpoint: {e}")
-        print(f"📝 Logs are still accessible via the 'get_log_entries' MCP tool")
+        print(f"⚠️  Could not add HTTP endpoints: {e}")
+        print(f"📝 Tools are still accessible via the MCP protocol")
 
 def _generate_log_html(log_data: dict) -> str:
     """Generate HTML page for displaying logs."""
@@ -1636,6 +1697,297 @@ def _generate_log_html(log_data: dict) -> str:
     </html>
     """
     
+    return html
+
+def _generate_test_html(host: str, port: int) -> str:
+    """Generate HTML page for testing TOPdesk connection."""
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>TOPdesk MCP Server - Connection Test</title>
+        <style>
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+            }}
+            .container {{
+                max-width: 800px;
+                margin: 40px auto;
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                overflow: hidden;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 30px;
+                text-align: center;
+            }}
+            .header h1 {{
+                margin: 0 0 10px 0;
+                font-size: 32px;
+            }}
+            .header p {{
+                margin: 0;
+                opacity: 0.9;
+            }}
+            .content {{
+                padding: 30px;
+            }}
+            .test-section {{
+                margin-bottom: 30px;
+            }}
+            .test-section h2 {{
+                color: #667eea;
+                font-size: 20px;
+                margin-bottom: 15px;
+                border-bottom: 2px solid #f0f0f0;
+                padding-bottom: 10px;
+            }}
+            .test-button {{
+                background: #667eea;
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 16px;
+                font-weight: 600;
+                transition: all 0.3s ease;
+            }}
+            .test-button:hover {{
+                background: #764ba2;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(102,126,234,0.4);
+            }}
+            .test-button:disabled {{
+                background: #ccc;
+                cursor: not-allowed;
+                transform: none;
+            }}
+            .result-box {{
+                margin-top: 20px;
+                padding: 15px;
+                border-radius: 6px;
+                display: none;
+            }}
+            .result-box.success {{
+                background: #e8f5e8;
+                border: 1px solid #2e7d2e;
+                color: #2e7d2e;
+            }}
+            .result-box.error {{
+                background: #ffebee;
+                border: 1px solid #d32f2f;
+                color: #d32f2f;
+            }}
+            .result-box.loading {{
+                background: #e3f2fd;
+                border: 1px solid #1976d2;
+                color: #1976d2;
+            }}
+            .config-info {{
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 6px;
+                margin-bottom: 20px;
+            }}
+            .config-info table {{
+                width: 100%;
+                border-collapse: collapse;
+            }}
+            .config-info td {{
+                padding: 8px;
+                border-bottom: 1px solid #e0e0e0;
+            }}
+            .config-info td:first-child {{
+                font-weight: 600;
+                width: 40%;
+                color: #666;
+            }}
+            .links {{
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 2px solid #f0f0f0;
+            }}
+            .links a {{
+                color: #667eea;
+                text-decoration: none;
+                margin-right: 20px;
+                font-weight: 600;
+            }}
+            .links a:hover {{
+                text-decoration: underline;
+            }}
+            pre {{
+                background: #2d2d2d;
+                color: #f8f8f2;
+                padding: 15px;
+                border-radius: 6px;
+                overflow-x: auto;
+                font-size: 13px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🧪 TOPdesk MCP Server</h1>
+                <p>Connection Test & Tools Explorer</p>
+            </div>
+            
+            <div class="content">
+                <div class="test-section">
+                    <h2>🔌 TOPdesk Connection Test</h2>
+                    <p>Test the connection to your TOPdesk instance using the configured credentials.</p>
+                    <div class="config-info">
+                        <table>
+                            <tr>
+                                <td>Server URL:</td>
+                                <td id="server-url">Loading...</td>
+                            </tr>
+                            <tr>
+                                <td>Username:</td>
+                                <td id="username">Loading...</td>
+                            </tr>
+                            <tr>
+                                <td>Status:</td>
+                                <td id="status">Not tested</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <button class="test-button" onclick="testConnection()">Test Connection</button>
+                    <div id="connection-result" class="result-box"></div>
+                </div>
+                
+                <div class="test-section">
+                    <h2>🔧 Available MCP Tools</h2>
+                    <p>List all tools available in this MCP server instance.</p>
+                    <button class="test-button" onclick="listTools()">List Tools</button>
+                    <div id="tools-result" class="result-box"></div>
+                </div>
+                
+                <div class="links">
+                    <strong>Quick Links:</strong><br><br>
+                    <a href="/tools" target="_blank">📋 Tools API (JSON)</a>
+                    <a href="/test/connection" target="_blank">🔌 Connection API (JSON)</a>
+                    <a href="/logging" target="_blank">📊 View Logs</a>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            // Load initial configuration
+            window.onload = function() {{
+                testConnection(true);
+            }};
+            
+            async function testConnection(silent = false) {{
+                const resultBox = document.getElementById('connection-result');
+                const button = event?.target;
+                
+                if (!silent) {{
+                    resultBox.className = 'result-box loading';
+                    resultBox.style.display = 'block';
+                    resultBox.innerHTML = '⏳ Testing connection...';
+                    if (button) button.disabled = true;
+                }}
+                
+                try {{
+                    const response = await fetch('/test/connection');
+                    const data = await response.json();
+                    
+                    // Update config info
+                    document.getElementById('server-url').textContent = data.topdesk_url || 'Not configured';
+                    document.getElementById('username').textContent = data.username || 'Not configured';
+                    
+                    if (data.status === 'success') {{
+                        document.getElementById('status').textContent = '✅ Connected';
+                        if (!silent) {{
+                            resultBox.className = 'result-box success';
+                            resultBox.innerHTML = `
+                                <strong>✅ Connection Successful!</strong><br>
+                                ${{data.message}}<br>
+                                <small>${{data.test_result}}</small>
+                            `;
+                        }}
+                    }} else {{
+                        document.getElementById('status').textContent = '❌ Failed';
+                        if (!silent) {{
+                            resultBox.className = 'result-box error';
+                            resultBox.innerHTML = `
+                                <strong>❌ Connection Failed</strong><br>
+                                ${{data.message}}
+                            `;
+                        }}
+                    }}
+                }} catch (error) {{
+                    document.getElementById('status').textContent = '❌ Error';
+                    if (!silent) {{
+                        resultBox.className = 'result-box error';
+                        resultBox.innerHTML = `
+                            <strong>❌ Error</strong><br>
+                            Failed to test connection: ${{error.message}}
+                        `;
+                    }}
+                }} finally {{
+                    if (button) button.disabled = false;
+                }}
+            }}
+            
+            async function listTools() {{
+                const resultBox = document.getElementById('tools-result');
+                const button = event.target;
+                
+                resultBox.className = 'result-box loading';
+                resultBox.style.display = 'block';
+                resultBox.innerHTML = '⏳ Loading tools...';
+                button.disabled = true;
+                
+                try {{
+                    const response = await fetch('/tools');
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.tools) {{
+                        let toolsList = '<strong>✅ Found ' + data.count + ' tools:</strong><br><br>';
+                        toolsList += '<div style="text-align: left;">';
+                        data.tools.forEach((tool, index) => {{
+                            toolsList += `
+                                <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 4px; border-left: 3px solid #667eea;">
+                                    <strong style="color: #667eea;">${{index + 1}}. ${{tool.name || 'Unnamed tool'}}</strong><br>
+                                    <small style="color: #666;">${{tool.description || 'No description available'}}</small>
+                                </div>
+                            `;
+                        }});
+                        toolsList += '</div>';
+                        
+                        resultBox.className = 'result-box success';
+                        resultBox.innerHTML = toolsList;
+                    }} else {{
+                        resultBox.className = 'result-box error';
+                        resultBox.innerHTML = '<strong>❌ No tools found</strong>';
+                    }}
+                }} catch (error) {{
+                    resultBox.className = 'result-box error';
+                    resultBox.innerHTML = `
+                        <strong>❌ Error</strong><br>
+                        Failed to load tools: ${{error.message}}
+                    `;
+                }} finally {{
+                    button.disabled = false;
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    """
     return html
 
 if __name__ == "__main__":
