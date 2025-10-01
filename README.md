@@ -46,6 +46,16 @@ The server includes comprehensive logging functionality:
 
 Features include log filtering by level, line limits, and real-time viewing. See [LOGGING_GUIDE.md](LOGGING_GUIDE.md) for detailed documentation.
 
+## 🧪 HTTP Testing Endpoints
+
+When running in HTTP mode (`TOPDESK_MCP_TRANSPORT=streamable-http`), additional endpoints are available:
+
+- **Test Page**: `http://localhost:3030/test` - Interactive HTML page to test TOPdesk connection and explore tools
+- **Connection Test API**: `http://localhost:3030/test/connection` - JSON API for testing TOPdesk connectivity (perfect for Postman)
+- **Tools List API**: `http://localhost:3030/tools` - JSON API listing all available MCP tools
+
+See [HTTP_ENDPOINTS.md](HTTP_ENDPOINTS.md) for complete documentation and usage examples.
+
 ### Document Conversion Environment Variables
 Topdesk Attachments can be converted to Markdown format by the tool. 
 
