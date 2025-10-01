@@ -6,7 +6,7 @@ import logging
 from types import MethodType
 import functools
 import json
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional
 
 try:  # pragma: no cover - fallback for environments with stubbed FastMCP
     from fastmcp.requests import ListToolsRequest
@@ -162,7 +162,7 @@ def topdesk_get_object_schemas() -> str:
     }
 )
 @handle_mcp_error
-def get_log_entries(lines: int = 100, level: str = None) -> dict:
+def get_log_entries(lines: Optional[int] = 100, level: Optional[str] = None) -> dict:
     """Get log entries from the TOPdesk MCP server.
     
     Parameters:
@@ -171,6 +171,10 @@ def get_log_entries(lines: int = 100, level: str = None) -> dict:
     """
     import re
     from datetime import datetime
+    
+    # Handle None values for ChatGPT compatibility
+    if lines is None:
+        lines = 100
     
     # Validate parameters
     if lines <= 0 or lines > 1000:
@@ -286,7 +290,7 @@ def get_log_entries(lines: int = 100, level: str = None) -> dict:
     }
 )
 @handle_mcp_error
-def topdesk_get_incident(incident_id: str, concise: bool = True) -> dict:
+def topdesk_get_incident(incident_id: str, concise: Optional[bool] = True) -> dict:
     """Get a TOPdesk incident by UUID or by Incident Number (I-xxxxxx-xxx). Both formats are accepted.
 
     Parameters:
@@ -295,6 +299,10 @@ def topdesk_get_incident(incident_id: str, concise: bool = True) -> dict:
     """
     if not incident_id or not str(incident_id).strip():
         raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
+    # Handle None for ChatGPT compatibility
+    if concise is None:
+        concise = True
     
     if concise:
         return topdesk_client.incident.get_concise(incident=incident_id)
@@ -323,7 +331,7 @@ def topdesk_get_incident(incident_id: str, concise: bool = True) -> dict:
     }
 )
 @handle_mcp_error
-def topdesk_get_incidents_by_fiql_query(query: str, page_size: int = 100) -> list:
+def topdesk_get_incidents_by_fiql_query(query: str, page_size: Optional[int] = 100) -> list:
     """Get TOPdesk incidents by FIQL query.
 
     Parameters:
@@ -332,6 +340,10 @@ def topdesk_get_incidents_by_fiql_query(query: str, page_size: int = 100) -> lis
     """
     if not query or not str(query).strip():
         raise MCPError("FIQL query must be provided and cannot be empty", -32602)
+    
+    # Handle None for ChatGPT compatibility
+    if page_size is None:
+        page_size = 100
     
     if page_size < 1 or page_size > 1000:
         raise MCPError("page_size must be between 1 and 1000", -32602)
@@ -798,7 +810,7 @@ def topdesk_deescalate_incident(incident_id: str, reason_id: str) -> dict:
     }
 )
 @handle_mcp_error
-def topdesk_get_progress_trail(incident_id: str, inlineimages: bool=True, force_images_as_data: bool=True) -> list:
+def topdesk_get_progress_trail(incident_id: str, inlineimages: Optional[bool] = True, force_images_as_data: Optional[bool] = True) -> list:
     """Get the progress trail for a TOPdesk incident.
 
     Parameters:
@@ -808,6 +820,12 @@ def topdesk_get_progress_trail(incident_id: str, inlineimages: bool=True, force_
     """
     if not incident_id or not str(incident_id).strip():
         raise MCPError("Incident ID must be provided and cannot be empty", -32602)
+    
+    # Handle None for ChatGPT compatibility
+    if inlineimages is None:
+        inlineimages = True
+    if force_images_as_data is None:
+        force_images_as_data = True
     
     return topdesk_client.incident.get_progress_trail(
         incident=incident_id, 
@@ -1229,7 +1247,7 @@ def topdesk_update_person(person_id: str, updated_fields: dict) -> dict:
     }
 )
 @handle_mcp_error
-def topdesk_archive_person(person_id: str, reason_id: str = None) -> dict:
+def topdesk_archive_person(person_id: str, reason_id: Optional[str] = None) -> dict:
     """Archive a TOPdesk person.
 
     Parameters:
@@ -1239,6 +1257,7 @@ def topdesk_archive_person(person_id: str, reason_id: str = None) -> dict:
     if not person_id or not str(person_id).strip():
         raise MCPError("Person ID must be provided and cannot be empty", -32602)
     
+    # Note: reason_id can be None, that's valid for this function
     return topdesk_client.person.archive(person_id=person_id, reason_id=reason_id)
 
 @mcp.tool(
@@ -1351,7 +1370,7 @@ def topdesk_health_check() -> dict:
     }
 )
 @handle_mcp_error
-def topdesk_list_open_incidents(limit: int = 5) -> list:
+def topdesk_list_open_incidents(limit: Optional[int] = 5) -> list:
     """List open incidents from TOPdesk.
     
     Parameters:
@@ -1361,6 +1380,15 @@ def topdesk_list_open_incidents(limit: int = 5) -> list:
         list: List of incident objects with normalized fields
     """
     logger = logging.getLogger(__name__)
+    
+    # Handle None or invalid limit values for ChatGPT compatibility
+    # ChatGPT may send null for optional parameters instead of omitting them
+    if limit is None:
+        logger.info("Received None for limit parameter, using default value of 5")
+        limit = 5
+    
+    # Log the actual parameter received for debugging ChatGPT compatibility
+    logger.info(f"topdesk_list_open_incidents called with limit={limit} (type: {type(limit).__name__})")
     
     if limit < 1 or limit > 100:
         raise MCPError("Limit must be between 1 and 100", -32602)
@@ -1456,7 +1484,7 @@ def topdesk_list_open_incidents(limit: int = 5) -> list:
     }
 )
 @handle_mcp_error
-def topdesk_list_recent_changes(limit: int = 5, open_only: bool = True) -> dict:
+def topdesk_list_recent_changes(limit: Optional[int] = 5, open_only: Optional[bool] = True) -> dict:
     """List recent changes from TOPdesk with automatic fallback.
     
     Parameters:
@@ -1467,6 +1495,16 @@ def topdesk_list_recent_changes(limit: int = 5, open_only: bool = True) -> dict:
         dict: Dictionary containing changes list and metadata about which endpoint was used
     """
     logger = logging.getLogger(__name__)
+    
+    # Handle None values for ChatGPT compatibility
+    if limit is None:
+        logger.info("Received None for limit parameter, using default value of 5")
+        limit = 5
+    if open_only is None:
+        logger.info("Received None for open_only parameter, using default value of True")
+        open_only = True
+    
+    logger.info(f"topdesk_list_recent_changes called with limit={limit}, open_only={open_only}")
     
     if limit < 1 or limit > 100:
         raise MCPError("Limit must be between 1 and 100", -32602)

@@ -103,6 +103,9 @@ class utils:
         else:
             url = f"{base_url}{uri}"
         
+        # Log the complete request for debugging (without credentials)
+        self._logger.debug(f"TOPdesk API request: GET {url.replace(base_url, '<BASE_URL>')}, params: {params}")
+        
         try:
             return requests.get(url, headers=headers, verify=self._ssl_verify, timeout=DEFAULT_TIMEOUT)
         except requests.exceptions.RequestException as e:
