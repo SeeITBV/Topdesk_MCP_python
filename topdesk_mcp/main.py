@@ -1674,17 +1674,30 @@ async def http_test_page(request: Request):
 
 @mcp.custom_route("/test/connection", methods=["GET"])
 async def http_test_connection_api(request: Request):
-    """HTTP endpoint to test TOPdesk connection API."""
+    """HTTP endpoint to test TOPdesk connection API using health check."""
     try:
-        # Try to make a simple API call to test connection
-        result = topdesk_client.get_countries()
-        return JSONResponse(content={
-            "status": "success",
-            "message": "Successfully connected to TOPdesk",
-            "topdesk_url": TOPDESK_URL,
-            "username": TOPDESK_USERNAME,
-            "test_result": f"Retrieved {len(result) if isinstance(result, list) else 'N/A'} countries"
-        })
+        # Use the new health check tool
+        result = topdesk_health_check.fn()
+        
+        if result.get('ok'):
+            return JSONResponse(content={
+                "status": "success",
+                "message": result.get('message', 'Successfully connected to TOPdesk'),
+                "topdesk_url": TOPDESK_URL,
+                "username": TOPDESK_USERNAME,
+                "version": result.get('version', {})
+            })
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": result.get('message', 'Health check failed'),
+                    "topdesk_url": TOPDESK_URL,
+                    "username": TOPDESK_USERNAME,
+                    "details": result
+                }
+            )
     except Exception as e:
         traceback.print_exc()
         return JSONResponse(
@@ -1699,27 +1712,28 @@ async def http_test_connection_api(request: Request):
 
 @mcp.custom_route("/test/incidents", methods=["GET"])
 async def http_test_incidents_api(request: Request):
-    """HTTP endpoint to test incident listing."""
+    """HTTP endpoint to test incident listing using new tool."""
     try:
-        # Get recent incidents (limited to 5 for testing)
-        incidents = topdesk_client.incident.get_list(page_size=5)
+        # Use the new list_open_incidents tool
+        incidents = topdesk_list_open_incidents.fn(limit=5)
         
-        # Format incidents for display
+        # Format incidents for display (they're already normalized)
         formatted_incidents = []
         if isinstance(incidents, list):
-            for inc in incidents[:5]:  # Limit to 5
+            for inc in incidents:
                 formatted_incidents.append({
-                    "number": inc.get("number", "N/A"),
+                    "number": inc.get("key", "N/A"),
                     "id": inc.get("id", "N/A"),
-                    "briefDescription": inc.get("briefDescription", "No description"),
+                    "briefDescription": inc.get("title", "No description"),
                     "status": inc.get("status", "N/A"),
-                    "caller": inc.get("caller", {}).get("dynamicName", "N/A") if isinstance(inc.get("caller"), dict) else "N/A",
-                    "creationDate": inc.get("creationDate", "N/A")
+                    "caller": inc.get("requester", "N/A"),
+                    "creationDate": inc.get("createdAt", "N/A"),
+                    "modificationDate": inc.get("updatedAt", "N/A")
                 })
         
         return JSONResponse(content={
             "status": "success",
-            "message": f"Retrieved {len(formatted_incidents)} incidents",
+            "message": f"Retrieved {len(formatted_incidents)} open incidents",
             "incidents": formatted_incidents,
             "total": len(incidents) if isinstance(incidents, list) else 0
         })
@@ -1735,31 +1749,36 @@ async def http_test_incidents_api(request: Request):
 
 @mcp.custom_route("/test/changes", methods=["GET"])
 async def http_test_changes_api(request: Request):
-    """HTTP endpoint to test change listing."""
+    """HTTP endpoint to test change listing using new tool with fallback."""
     try:
-        # Try to get operator changes (limited to 5 for testing)
-        # Using direct API call as there's no dedicated change module yet
-        response = topdesk_client.utils.request_topdesk("/tas/api/operatorChanges", page_size=5)
-        changes = topdesk_client.utils.handle_topdesk_response(response)
+        # Use the new list_recent_changes tool
+        result = topdesk_list_recent_changes.fn(limit=5, open_only=True)
         
-        # Format changes for display
+        # Extract changes from the result
+        changes = result.get('changes', [])
+        metadata = result.get('metadata', {})
+        
+        # Format changes for display (they're already normalized)
         formatted_changes = []
         if isinstance(changes, list):
-            for change in changes[:5]:  # Limit to 5
+            for change in changes:
                 formatted_changes.append({
-                    "number": change.get("number", "N/A"),
+                    "number": change.get("key", "N/A"),
                     "id": change.get("id", "N/A"),
-                    "briefDescription": change.get("briefDescription", "No description"),
+                    "briefDescription": change.get("title", "No description"),
                     "status": change.get("status", "N/A"),
-                    "requester": change.get("requester", {}).get("dynamicName", "N/A") if isinstance(change.get("requester"), dict) else "N/A",
-                    "creationDate": change.get("creationDate", "N/A")
+                    "requester": change.get("requester", "N/A"),
+                    "creationDate": change.get("createdAt", "N/A"),
+                    "modificationDate": change.get("updatedAt", "N/A")
                 })
         
         return JSONResponse(content={
             "status": "success",
-            "message": f"Retrieved {len(formatted_changes)} changes",
+            "message": f"Retrieved {len(formatted_changes)} changes from {metadata.get('endpoint_used', 'unknown')} endpoint",
             "changes": formatted_changes,
-            "total": len(changes) if isinstance(changes, list) else 0
+            "total": len(changes),
+            "endpoint_used": metadata.get('endpoint_used', 'unknown'),
+            "filtered": metadata.get('filtered', False)
         })
     except Exception as e:
         traceback.print_exc()
