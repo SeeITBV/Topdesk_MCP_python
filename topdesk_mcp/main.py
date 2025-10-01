@@ -1330,7 +1330,7 @@ async def http_get_logs(request: Request):
     try:
         lines = int(request.query_params.get('lines', 100))
         level = request.query_params.get('level', None)
-        result = get_log_entries(lines, level)
+        result = get_log_entries(lines=lines, level=level)
         
         # Return HTML page
         html_content = _generate_log_html(result)
@@ -1349,7 +1349,7 @@ async def http_get_logs_json(request: Request):
     try:
         lines = int(request.query_params.get('lines', 100))
         level = request.query_params.get('level', None)
-        result = get_log_entries(lines, level)
+        result = get_log_entries(lines=lines, level=level)
         return JSONResponse(content=result)
     except Exception as e:
         traceback.print_exc()
@@ -1422,7 +1422,7 @@ async def http_test_incidents_api(request: Request):
     """HTTP endpoint to test incident listing."""
     try:
         # Get recent incidents (limited to 5 for testing)
-        incidents = topdesk_client.incidents.get_list(page_size=5)
+        incidents = topdesk_client.incident.get_list(page_size=5)
         
         # Format incidents for display
         formatted_incidents = []
