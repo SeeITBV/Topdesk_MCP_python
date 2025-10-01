@@ -1383,8 +1383,8 @@ def topdesk_list_open_incidents(limit: int = 5) -> list:
         
         logger.debug(f"Response status: {response.status_code}")
         
-        # Handle response
-        if response.status_code == 200:
+        # Handle response - check for 2xx status codes (including 200 and 206 for pagination)
+        if response.status_code >= 200 and response.status_code < 300:
             incidents = topdesk_client.utils.handle_topdesk_response(response)
             logger.info(f"Successfully retrieved {len(incidents) if isinstance(incidents, list) else 0} incidents")
             
