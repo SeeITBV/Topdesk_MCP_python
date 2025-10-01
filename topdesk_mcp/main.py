@@ -1417,6 +1417,80 @@ async def http_test_connection_api(request: Request):
             }
         )
 
+@mcp.custom_route("/test/incidents", methods=["GET"])
+async def http_test_incidents_api(request: Request):
+    """HTTP endpoint to test incident listing."""
+    try:
+        # Get recent incidents (limited to 5 for testing)
+        incidents = topdesk_client.incidents.get_list(page_size=5)
+        
+        # Format incidents for display
+        formatted_incidents = []
+        if isinstance(incidents, list):
+            for inc in incidents[:5]:  # Limit to 5
+                formatted_incidents.append({
+                    "number": inc.get("number", "N/A"),
+                    "id": inc.get("id", "N/A"),
+                    "briefDescription": inc.get("briefDescription", "No description"),
+                    "status": inc.get("status", "N/A"),
+                    "caller": inc.get("caller", {}).get("dynamicName", "N/A") if isinstance(inc.get("caller"), dict) else "N/A",
+                    "creationDate": inc.get("creationDate", "N/A")
+                })
+        
+        return JSONResponse(content={
+            "status": "success",
+            "message": f"Retrieved {len(formatted_incidents)} incidents",
+            "incidents": formatted_incidents,
+            "total": len(incidents) if isinstance(incidents, list) else 0
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to retrieve incidents: {str(e)}"
+            }
+        )
+
+@mcp.custom_route("/test/changes", methods=["GET"])
+async def http_test_changes_api(request: Request):
+    """HTTP endpoint to test change listing."""
+    try:
+        # Try to get operator changes (limited to 5 for testing)
+        # Using direct API call as there's no dedicated change module yet
+        response = topdesk_client.utils.request_topdesk("/tas/api/operatorChanges", page_size=5)
+        changes = topdesk_client.utils.handle_topdesk_response(response)
+        
+        # Format changes for display
+        formatted_changes = []
+        if isinstance(changes, list):
+            for change in changes[:5]:  # Limit to 5
+                formatted_changes.append({
+                    "number": change.get("number", "N/A"),
+                    "id": change.get("id", "N/A"),
+                    "briefDescription": change.get("briefDescription", "No description"),
+                    "status": change.get("status", "N/A"),
+                    "requester": change.get("requester", {}).get("dynamicName", "N/A") if isinstance(change.get("requester"), dict) else "N/A",
+                    "creationDate": change.get("creationDate", "N/A")
+                })
+        
+        return JSONResponse(content={
+            "status": "success",
+            "message": f"Retrieved {len(formatted_changes)} changes",
+            "changes": formatted_changes,
+            "total": len(changes) if isinstance(changes, list) else 0
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to retrieve changes: {str(e)}"
+            }
+        )
+
 def main():
     """Main function to run the MCP server."""
     transport = os.getenv("TOPDESK_MCP_TRANSPORT", "stdio")
@@ -1863,6 +1937,20 @@ def _generate_test_html(host: str, port: int) -> str:
                 </div>
                 
                 <div class="test-section">
+                    <h2>🎫 Incident Management Test</h2>
+                    <p>Test the incident listing API to retrieve recent incidents from TOPdesk.</p>
+                    <button class="test-button" onclick="testIncidents()">List Recent Incidents</button>
+                    <div id="incidents-result" class="result-box"></div>
+                </div>
+                
+                <div class="test-section">
+                    <h2>🔄 Change Management Test</h2>
+                    <p>Test the change listing API to retrieve recent changes from TOPdesk.</p>
+                    <button class="test-button" onclick="testChanges()">List Recent Changes</button>
+                    <div id="changes-result" class="result-box"></div>
+                </div>
+                
+                <div class="test-section">
                     <h2>🔧 Available MCP Tools</h2>
                     <p>List all tools available in this MCP server instance.</p>
                     <button class="test-button" onclick="listTools()">List Tools</button>
@@ -1873,6 +1961,8 @@ def _generate_test_html(host: str, port: int) -> str:
                     <strong>Quick Links:</strong><br><br>
                     <a href="/tools" target="_blank">📋 Tools API (JSON)</a>
                     <a href="/test/connection" target="_blank">🔌 Connection API (JSON)</a>
+                    <a href="/test/incidents" target="_blank">🎫 Incidents API (JSON)</a>
+                    <a href="/test/changes" target="_blank">🔄 Changes API (JSON)</a>
                     <a href="/logging" target="_blank">📊 View Logs</a>
                 </div>
             </div>
@@ -1974,6 +2064,102 @@ def _generate_test_html(host: str, port: int) -> str:
                     resultBox.innerHTML = `
                         <strong>❌ Error</strong><br>
                         Failed to load tools: ${{error.message}}
+                    `;
+                }} finally {{
+                    button.disabled = false;
+                }}
+            }}
+            
+            async function testIncidents() {{
+                const resultBox = document.getElementById('incidents-result');
+                const button = event.target;
+                
+                resultBox.className = 'result-box loading';
+                resultBox.style.display = 'block';
+                resultBox.innerHTML = '⏳ Loading incidents...';
+                button.disabled = true;
+                
+                try {{
+                    const response = await fetch('/test/incidents');
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.incidents) {{
+                        let incidentsList = '<strong>✅ ' + data.message + '</strong><br><br>';
+                        incidentsList += '<div style="text-align: left;">';
+                        data.incidents.forEach((incident, index) => {{
+                            incidentsList += `
+                                <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 4px; border-left: 3px solid #2196F3;">
+                                    <strong style="color: #2196F3;">${{incident.number || 'N/A'}}</strong><br>
+                                    <strong>${{incident.briefDescription || 'No description'}}</strong><br>
+                                    <small style="color: #666;">
+                                        Status: ${{incident.status || 'N/A'}} | 
+                                        Caller: ${{incident.caller || 'N/A'}} | 
+                                        Created: ${{incident.creationDate || 'N/A'}}
+                                    </small>
+                                </div>
+                            `;
+                        }});
+                        incidentsList += '</div>';
+                        
+                        resultBox.className = 'result-box success';
+                        resultBox.innerHTML = incidentsList;
+                    }} else {{
+                        resultBox.className = 'result-box error';
+                        resultBox.innerHTML = '<strong>❌ ' + (data.message || 'Failed to retrieve incidents') + '</strong>';
+                    }}
+                }} catch (error) {{
+                    resultBox.className = 'result-box error';
+                    resultBox.innerHTML = `
+                        <strong>❌ Error</strong><br>
+                        Failed to load incidents: ${{error.message}}
+                    `;
+                }} finally {{
+                    button.disabled = false;
+                }}
+            }}
+            
+            async function testChanges() {{
+                const resultBox = document.getElementById('changes-result');
+                const button = event.target;
+                
+                resultBox.className = 'result-box loading';
+                resultBox.style.display = 'block';
+                resultBox.innerHTML = '⏳ Loading changes...';
+                button.disabled = true;
+                
+                try {{
+                    const response = await fetch('/test/changes');
+                    const data = await response.json();
+                    
+                    if (data.status === 'success' && data.changes) {{
+                        let changesList = '<strong>✅ ' + data.message + '</strong><br><br>';
+                        changesList += '<div style="text-align: left;">';
+                        data.changes.forEach((change, index) => {{
+                            changesList += `
+                                <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 4px; border-left: 3px solid #FF9800;">
+                                    <strong style="color: #FF9800;">${{change.number || 'N/A'}}</strong><br>
+                                    <strong>${{change.briefDescription || 'No description'}}</strong><br>
+                                    <small style="color: #666;">
+                                        Status: ${{change.status || 'N/A'}} | 
+                                        Requester: ${{change.requester || 'N/A'}} | 
+                                        Created: ${{change.creationDate || 'N/A'}}
+                                    </small>
+                                </div>
+                            `;
+                        }});
+                        changesList += '</div>';
+                        
+                        resultBox.className = 'result-box success';
+                        resultBox.innerHTML = changesList;
+                    }} else {{
+                        resultBox.className = 'result-box error';
+                        resultBox.innerHTML = '<strong>❌ ' + (data.message || 'Failed to retrieve changes') + '</strong>';
+                    }}
+                }} catch (error) {{
+                    resultBox.className = 'result-box error';
+                    resultBox.innerHTML = `
+                        <strong>❌ Error</strong><br>
+                        Failed to load changes: ${{error.message}}
                     `;
                 }} finally {{
                     button.disabled = false;
