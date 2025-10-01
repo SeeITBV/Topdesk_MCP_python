@@ -2,6 +2,18 @@
 
 This project is a Model Context Protocol (MCP) server implemented in Python. It exposes the Topdesk API via the TOPdeskPy SDK.
 
+## 🎉 New: Incidents & Changes Support
+
+The connector now includes dedicated tools for retrieving incidents and changes from TOPdesk:
+
+- **✅ Health Check**: Validate API connectivity via `/tas/api/version`
+- **✅ List Open Incidents**: Retrieve open incidents with proper filtering and sorting
+- **✅ List Recent Changes**: Automatic fallback between `/changes` and `/operatorChanges`
+
+**Quick Start:** See [QUICKSTART.md](docs/QUICKSTART.md) for usage examples and testing instructions.
+
+**Technical Details:** See [TOPDESK_CONNECTOR_FIXES.md](docs/TOPDESK_CONNECTOR_FIXES.md) for complete implementation documentation.
+
 ## Project Purpose
 - Acts as an MCP server to bridge MCP clients with the Topdesk API.
 - Uses the [TOPdeskPy SDK](https://github.com/TwinkelToe/TOPdeskPy) (with some modifications) for all Topdesk API interactions.

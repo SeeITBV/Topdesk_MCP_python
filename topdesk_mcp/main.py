@@ -1266,6 +1266,337 @@ def topdesk_unarchive_person(person_id: str) -> dict:
     
     return topdesk_client.person.unarchive(person_id=person_id)
 
+######################
+# HEALTH & DIAGNOSTICS
+######################
+@mcp.tool(
+    description="Check TOPdesk API health and connectivity by calling the /version endpoint.",
+    input_schema={
+        "type": "object",
+        "properties": {},
+        "required": []
+    }
+)
+@handle_mcp_error
+def topdesk_health_check() -> dict:
+    """Check TOPdesk API health and connectivity.
+    
+    Returns:
+        dict: Health status including version information if available
+    """
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Call /tas/api/version endpoint
+        response = topdesk_client.utils.request_topdesk("/tas/api/version")
+        
+        # Log the request for diagnostics
+        logger.info(f"Health check: GET {TOPDESK_URL}/tas/api/version -> Status {response.status_code}")
+        
+        if response.status_code == 200:
+            try:
+                version_data = response.json()
+                logger.debug(f"TOPdesk version data: {version_data}")
+                return {
+                    "ok": True,
+                    "status": "healthy",
+                    "version": version_data,
+                    "message": "Successfully connected to TOPdesk API"
+                }
+            except Exception as e:
+                logger.warning(f"Could not parse version response as JSON: {e}")
+                return {
+                    "ok": True,
+                    "status": "healthy",
+                    "message": "Connected to TOPdesk API, but version info not available",
+                    "raw_response": response.text[:300]
+                }
+        else:
+            error_msg = f"Health check failed with status {response.status_code}"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            return {
+                "ok": False,
+                "status": "unhealthy",
+                "status_code": response.status_code,
+                "message": error_msg,
+                "error_detail": response.text[:300]
+            }
+    except Exception as e:
+        error_msg = f"Health check failed with exception: {str(e)}"
+        logger.error(error_msg)
+        return {
+            "ok": False,
+            "status": "unhealthy",
+            "message": error_msg
+        }
+
+#########################
+# INCIDENTS & CHANGES
+#########################
+@mcp.tool(
+    description="List open/unresolved incidents from TOPdesk, sorted by most recent modification.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of incidents to return (default: 5, max: 100)",
+                "default": 5,
+                "minimum": 1,
+                "maximum": 100
+            }
+        },
+        "required": []
+    }
+)
+@handle_mcp_error
+def topdesk_list_open_incidents(limit: int = 5) -> list:
+    """List open incidents from TOPdesk.
+    
+    Parameters:
+        limit: Maximum number of incidents to return (default: 5)
+        
+    Returns:
+        list: List of incident objects with normalized fields
+    """
+    logger = logging.getLogger(__name__)
+    
+    if limit < 1 or limit > 100:
+        raise MCPError("Limit must be between 1 and 100", -32602)
+    
+    try:
+        # Build the request URI with query parameters
+        # Use pageSize for pagination, closed=false to filter open incidents, sort by modificationDate descending
+        uri = f"/tas/api/incidents"
+        params = {
+            'pageSize': limit,
+            'closed': 'false',
+            'sort': 'modificationDate:desc'
+        }
+        
+        # Log the full URL for diagnostics (without credentials)
+        full_url = f"{TOPDESK_URL}{uri}?{'&'.join([f'{k}={v}' for k, v in params.items()])}"
+        logger.info(f"Fetching open incidents: GET {full_url}")
+        
+        # Make the request using custom_uri to pass parameters
+        response = topdesk_client.utils.request_topdesk(uri, page_size=limit, custom_uri={'closed': 'false', 'sort': 'modificationDate:desc'})
+        
+        logger.debug(f"Response status: {response.status_code}")
+        
+        # Handle response
+        if response.status_code == 200:
+            incidents = topdesk_client.utils.handle_topdesk_response(response)
+            logger.info(f"Successfully retrieved {len(incidents) if isinstance(incidents, list) else 0} incidents")
+            
+            # Normalize the response
+            normalized_incidents = []
+            if isinstance(incidents, list):
+                for incident in incidents:
+                    normalized = {
+                        "id": incident.get("id", ""),
+                        "key": incident.get("number", ""),
+                        "title": incident.get("briefDescription", ""),
+                        "status": incident.get("processingStatus", {}).get("name", "") if isinstance(incident.get("processingStatus"), dict) else str(incident.get("processingStatus", "")),
+                        "requester": incident.get("caller", {}).get("dynamicName", "") if isinstance(incident.get("caller"), dict) else "",
+                        "createdAt": incident.get("creationDate", ""),
+                        "updatedAt": incident.get("modificationDate", ""),
+                        "closed": incident.get("closed", False)
+                    }
+                    normalized_incidents.append(normalized)
+            
+            return normalized_incidents
+        elif response.status_code == 401:
+            error_msg = "Authentication failed - check TOPDESK_USERNAME and TOPDESK_PASSWORD (application password)"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32001)
+        elif response.status_code == 403:
+            error_msg = "Access forbidden - user lacks permissions for incidents module"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32002)
+        elif response.status_code == 404:
+            error_msg = "Incidents endpoint not found - check TOPdesk URL and API path"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32003)
+        elif response.status_code >= 500:
+            error_msg = f"TOPdesk server error (status {response.status_code})"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32004)
+        else:
+            error_msg = f"Unexpected response status {response.status_code}"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32000)
+            
+    except MCPError:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to retrieve incidents: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        raise MCPError(error_msg, -32603)
+
+@mcp.tool(
+    description="List recent changes from TOPdesk. Automatically tries /changes first, falls back to /operatorChanges if not available.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "limit": {
+                "type": "integer",
+                "description": "Maximum number of changes to return (default: 5, max: 100)",
+                "default": 5,
+                "minimum": 1,
+                "maximum": 100
+            },
+            "open_only": {
+                "type": "boolean",
+                "description": "Filter to only open/non-closed changes (default: true)",
+                "default": True
+            }
+        },
+        "required": []
+    }
+)
+@handle_mcp_error
+def topdesk_list_recent_changes(limit: int = 5, open_only: bool = True) -> dict:
+    """List recent changes from TOPdesk with automatic fallback.
+    
+    Parameters:
+        limit: Maximum number of changes to return (default: 5)
+        open_only: Filter to only open changes (default: True)
+        
+    Returns:
+        dict: Dictionary containing changes list and metadata about which endpoint was used
+    """
+    logger = logging.getLogger(__name__)
+    
+    if limit < 1 or limit > 100:
+        raise MCPError("Limit must be between 1 and 100", -32602)
+    
+    # Try /changes first
+    try:
+        uri = "/tas/api/changes"
+        params = {
+            'pageSize': limit,
+            'sort': 'modificationDate:desc'
+        }
+        
+        full_url = f"{TOPDESK_URL}{uri}?{'&'.join([f'{k}={v}' for k, v in params.items()])}"
+        logger.info(f"Attempting to fetch changes: GET {full_url}")
+        
+        response = topdesk_client.utils.request_topdesk(uri, page_size=limit, custom_uri={'sort': 'modificationDate:desc'})
+        
+        logger.debug(f"Response status for /changes: {response.status_code}")
+        
+        if response.status_code == 200:
+            changes = topdesk_client.utils.handle_topdesk_response(response)
+            logger.info(f"Successfully retrieved changes from /changes endpoint")
+            return _normalize_changes_response(changes, open_only, "changes")
+        elif response.status_code == 404:
+            logger.info("/changes endpoint returned 404, falling back to /operatorChanges")
+        else:
+            logger.warning(f"/changes endpoint returned status {response.status_code}: {response.text[:300]}")
+    except Exception as e:
+        logger.warning(f"Error trying /changes endpoint: {e}, falling back to /operatorChanges")
+    
+    # Fallback to /operatorChanges
+    try:
+        uri = "/tas/api/operatorChanges"
+        params = {
+            'pageSize': limit,
+            'sort': 'modificationDate:desc'
+        }
+        
+        full_url = f"{TOPDESK_URL}{uri}?{'&'.join([f'{k}={v}' for k, v in params.items()])}"
+        logger.info(f"Attempting to fetch changes from fallback: GET {full_url}")
+        
+        response = topdesk_client.utils.request_topdesk(uri, page_size=limit, custom_uri={'sort': 'modificationDate:desc'})
+        
+        logger.debug(f"Response status for /operatorChanges: {response.status_code}")
+        
+        if response.status_code == 200:
+            changes = topdesk_client.utils.handle_topdesk_response(response)
+            logger.info(f"Successfully retrieved changes from /operatorChanges endpoint")
+            return _normalize_changes_response(changes, open_only, "operatorChanges")
+        elif response.status_code == 401:
+            error_msg = "Authentication failed - check TOPDESK_USERNAME and TOPDESK_PASSWORD (application password)"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32001)
+        elif response.status_code == 403:
+            error_msg = "Access forbidden - user lacks permissions for changes module"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32002)
+        elif response.status_code == 404:
+            error_msg = "Changes endpoint not found - neither /changes nor /operatorChanges are available"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32003)
+        elif response.status_code >= 500:
+            error_msg = f"TOPdesk server error (status {response.status_code})"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32004)
+        else:
+            error_msg = f"Unexpected response status {response.status_code}"
+            logger.error(f"{error_msg}: {response.text[:300]}")
+            raise MCPError(error_msg, -32000)
+            
+    except MCPError:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to retrieve changes: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        raise MCPError(error_msg, -32603)
+
+def _normalize_changes_response(changes, open_only: bool, endpoint_used: str) -> dict:
+    """Helper function to normalize changes response.
+    
+    Parameters:
+        changes: Raw changes data from TOPdesk
+        open_only: Whether to filter for open changes only
+        endpoint_used: Which endpoint was used ("changes" or "operatorChanges")
+        
+    Returns:
+        dict: Normalized response with changes list and metadata
+    """
+    logger = logging.getLogger(__name__)
+    
+    normalized_changes = []
+    if isinstance(changes, list):
+        for change in changes:
+            # Check if change is closed (client-side filtering)
+            if open_only:
+                # Check various fields that might indicate closed status
+                closed_date = change.get("closedDate") or change.get("closureDate")
+                status = change.get("status", {})
+                state = change.get("state", "")
+                
+                # Skip if closed
+                if closed_date:
+                    continue
+                if isinstance(status, dict) and status.get("name", "").lower() in ["closed", "gesloten"]:
+                    continue
+                if isinstance(state, str) and state.lower() in ["closed", "gesloten"]:
+                    continue
+            
+            # Normalize the change object
+            normalized = {
+                "id": change.get("id", ""),
+                "key": change.get("number", ""),
+                "title": change.get("briefDescription", ""),
+                "status": change.get("status", {}).get("name", "") if isinstance(change.get("status"), dict) else str(change.get("status", "")),
+                "requester": change.get("requester", {}).get("dynamicName", "") if isinstance(change.get("requester"), dict) else "",
+                "createdAt": change.get("creationDate", ""),
+                "updatedAt": change.get("modificationDate", "")
+            }
+            normalized_changes.append(normalized)
+    
+    logger.info(f"Normalized {len(normalized_changes)} changes from {endpoint_used} endpoint")
+    
+    return {
+        "changes": normalized_changes,
+        "metadata": {
+            "endpoint_used": endpoint_used,
+            "total_returned": len(normalized_changes),
+            "filtered": open_only
+        }
+    }
+
 # Register HTTP custom routes at module level
 # These will be available when the server runs in HTTP mode
 from starlette.responses import JSONResponse, HTMLResponse
@@ -1343,17 +1674,30 @@ async def http_test_page(request: Request):
 
 @mcp.custom_route("/test/connection", methods=["GET"])
 async def http_test_connection_api(request: Request):
-    """HTTP endpoint to test TOPdesk connection API."""
+    """HTTP endpoint to test TOPdesk connection API using health check."""
     try:
-        # Try to make a simple API call to test connection
-        result = topdesk_client.get_countries()
-        return JSONResponse(content={
-            "status": "success",
-            "message": "Successfully connected to TOPdesk",
-            "topdesk_url": TOPDESK_URL,
-            "username": TOPDESK_USERNAME,
-            "test_result": f"Retrieved {len(result) if isinstance(result, list) else 'N/A'} countries"
-        })
+        # Use the new health check tool
+        result = topdesk_health_check.fn()
+        
+        if result.get('ok'):
+            return JSONResponse(content={
+                "status": "success",
+                "message": result.get('message', 'Successfully connected to TOPdesk'),
+                "topdesk_url": TOPDESK_URL,
+                "username": TOPDESK_USERNAME,
+                "version": result.get('version', {})
+            })
+        else:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": result.get('message', 'Health check failed'),
+                    "topdesk_url": TOPDESK_URL,
+                    "username": TOPDESK_USERNAME,
+                    "details": result
+                }
+            )
     except Exception as e:
         traceback.print_exc()
         return JSONResponse(
@@ -1368,27 +1712,28 @@ async def http_test_connection_api(request: Request):
 
 @mcp.custom_route("/test/incidents", methods=["GET"])
 async def http_test_incidents_api(request: Request):
-    """HTTP endpoint to test incident listing."""
+    """HTTP endpoint to test incident listing using new tool."""
     try:
-        # Get recent incidents (limited to 5 for testing)
-        incidents = topdesk_client.incident.get_list(page_size=5)
+        # Use the new list_open_incidents tool
+        incidents = topdesk_list_open_incidents.fn(limit=5)
         
-        # Format incidents for display
+        # Format incidents for display (they're already normalized)
         formatted_incidents = []
         if isinstance(incidents, list):
-            for inc in incidents[:5]:  # Limit to 5
+            for inc in incidents:
                 formatted_incidents.append({
-                    "number": inc.get("number", "N/A"),
+                    "number": inc.get("key", "N/A"),
                     "id": inc.get("id", "N/A"),
-                    "briefDescription": inc.get("briefDescription", "No description"),
+                    "briefDescription": inc.get("title", "No description"),
                     "status": inc.get("status", "N/A"),
-                    "caller": inc.get("caller", {}).get("dynamicName", "N/A") if isinstance(inc.get("caller"), dict) else "N/A",
-                    "creationDate": inc.get("creationDate", "N/A")
+                    "caller": inc.get("requester", "N/A"),
+                    "creationDate": inc.get("createdAt", "N/A"),
+                    "modificationDate": inc.get("updatedAt", "N/A")
                 })
         
         return JSONResponse(content={
             "status": "success",
-            "message": f"Retrieved {len(formatted_incidents)} incidents",
+            "message": f"Retrieved {len(formatted_incidents)} open incidents",
             "incidents": formatted_incidents,
             "total": len(incidents) if isinstance(incidents, list) else 0
         })
@@ -1404,31 +1749,36 @@ async def http_test_incidents_api(request: Request):
 
 @mcp.custom_route("/test/changes", methods=["GET"])
 async def http_test_changes_api(request: Request):
-    """HTTP endpoint to test change listing."""
+    """HTTP endpoint to test change listing using new tool with fallback."""
     try:
-        # Try to get operator changes (limited to 5 for testing)
-        # Using direct API call as there's no dedicated change module yet
-        response = topdesk_client.utils.request_topdesk("/tas/api/operatorChanges", page_size=5)
-        changes = topdesk_client.utils.handle_topdesk_response(response)
+        # Use the new list_recent_changes tool
+        result = topdesk_list_recent_changes.fn(limit=5, open_only=True)
         
-        # Format changes for display
+        # Extract changes from the result
+        changes = result.get('changes', [])
+        metadata = result.get('metadata', {})
+        
+        # Format changes for display (they're already normalized)
         formatted_changes = []
         if isinstance(changes, list):
-            for change in changes[:5]:  # Limit to 5
+            for change in changes:
                 formatted_changes.append({
-                    "number": change.get("number", "N/A"),
+                    "number": change.get("key", "N/A"),
                     "id": change.get("id", "N/A"),
-                    "briefDescription": change.get("briefDescription", "No description"),
+                    "briefDescription": change.get("title", "No description"),
                     "status": change.get("status", "N/A"),
-                    "requester": change.get("requester", {}).get("dynamicName", "N/A") if isinstance(change.get("requester"), dict) else "N/A",
-                    "creationDate": change.get("creationDate", "N/A")
+                    "requester": change.get("requester", "N/A"),
+                    "creationDate": change.get("createdAt", "N/A"),
+                    "modificationDate": change.get("updatedAt", "N/A")
                 })
         
         return JSONResponse(content={
             "status": "success",
-            "message": f"Retrieved {len(formatted_changes)} changes",
+            "message": f"Retrieved {len(formatted_changes)} changes from {metadata.get('endpoint_used', 'unknown')} endpoint",
             "changes": formatted_changes,
-            "total": len(changes) if isinstance(changes, list) else 0
+            "total": len(changes),
+            "endpoint_used": metadata.get('endpoint_used', 'unknown'),
+            "filtered": metadata.get('filtered', False)
         })
     except Exception as e:
         traceback.print_exc()
