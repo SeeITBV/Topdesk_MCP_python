@@ -223,4 +223,4 @@ for entry in data['entries']:
 
 ---
 
-For more information, see the [TOPdesk MCP Server Documentation](README.md).
+For more information, see the [TOPdesk MCP Server Documentation](../README.md).

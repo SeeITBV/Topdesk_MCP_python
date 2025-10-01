@@ -124,7 +124,7 @@ docker build -t topdesk-mcp .
 docker run -p 3030:3030 -e TOPDESK_URL="..." -e TOPDESK_USERNAME="..." -e TOPDESK_PASSWORD="..." topdesk-mcp
 ```
 
-📚 **See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for comprehensive deployment instructions and troubleshooting.**
+📚 **See [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for comprehensive deployment instructions and troubleshooting.**
 
 ## Package Structure
 ```
@@ -245,13 +245,13 @@ topdesk_mcp/  # Directory for the MCP server package
 For comprehensive information about this tool:
 
 ### User Guides
-- **[MCP Tooling Guide](MCP_TOOLING_GUIDE.md)** - 📚 **START HERE** - Comprehensive guide to all 33 MCP tools with prompting examples
-- **[Quick Reference Guide](MCP_QUICK_REFERENCE.md)** - 🚀 Concise reference for all tools and common patterns
+- **[MCP Tooling Guide](docs/MCP_TOOLING_GUIDE.md)** - 📚 **START HERE** - Comprehensive guide to all 33 MCP tools with prompting examples
+- **[Quick Reference Guide](docs/MCP_QUICK_REFERENCE.md)** - 🚀 Concise reference for all tools and common patterns
 
 ### Technical Documentation
-- **[Developer Guide](DEVELOPER_GUIDE.md)** - Setup, usage examples, and development workflow
-- **[Codebase Documentation](CODEBASE_DOCUMENTATION.md)** - Complete architecture, design patterns, and technical details
-- **[Deployment Guide](DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions and troubleshooting
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Setup, usage examples, and development workflow
+- **[Codebase Documentation](docs/CODEBASE_DOCUMENTATION.md)** - Complete architecture, design patterns, and technical details
+- **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Comprehensive deployment instructions and troubleshooting
 
 ### Reference Materials
 - **[FIQL Query Guide](topdesk_mcp/resources/fiql_query_howto.md)** - TOPdesk query language reference
