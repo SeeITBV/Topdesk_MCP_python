@@ -1500,14 +1500,14 @@ def topdesk_list_recent_changes(limit: int = 5, open_only: bool = True) -> dict:
     try:
         uri = "/tas/api/operatorChanges"
         params = {
-            'pageSize': limit,
-            'sort': 'modificationDate:desc'
+            'pageSize': limit
         }
         
         full_url = f"{TOPDESK_URL}{uri}?{'&'.join([f'{k}={v}' for k, v in params.items()])}"
         logger.info(f"Attempting to fetch changes from fallback: GET {full_url}")
         
-        response = topdesk_client.utils.request_topdesk(uri, page_size=limit, custom_uri={'sort': 'modificationDate:desc'})
+        # Note: /operatorChanges does not support sort parameter, only /changes does
+        response = topdesk_client.utils.request_topdesk(uri, page_size=limit)
         
         logger.debug(f"Response status for /operatorChanges: {response.status_code}")
         
