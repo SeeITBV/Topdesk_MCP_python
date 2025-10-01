@@ -1318,6 +1318,105 @@ def topdesk_unarchive_person(person_id: str) -> dict:
     
     return topdesk_client.person.unarchive(person_id=person_id)
 
+# Register HTTP custom routes at module level
+# These will be available when the server runs in HTTP mode
+from starlette.responses import JSONResponse, HTMLResponse
+from starlette.requests import Request
+import traceback
+
+@mcp.custom_route("/logging", methods=["GET"])
+async def http_get_logs(request: Request):
+    """HTTP endpoint to access logs."""
+    try:
+        lines = int(request.query_params.get('lines', 100))
+        level = request.query_params.get('level', None)
+        result = get_log_entries(lines, level)
+        
+        # Return HTML page
+        html_content = _generate_log_html(result)
+        return HTMLResponse(content=html_content)
+        
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to retrieve logs: {str(e)}"}
+        )
+
+@mcp.custom_route("/logging/json", methods=["GET"])
+async def http_get_logs_json(request: Request):
+    """HTTP endpoint to access logs as JSON."""
+    try:
+        lines = int(request.query_params.get('lines', 100))
+        level = request.query_params.get('level', None)
+        result = get_log_entries(lines, level)
+        return JSONResponse(content=result)
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to retrieve logs: {str(e)}"}
+        )
+
+@mcp.custom_route("/tools", methods=["GET"])
+async def http_get_tools(request: Request):
+    """HTTP endpoint to list all available MCP tools."""
+    try:
+        tools = list_registered_tools()
+        return JSONResponse(content={
+            "status": "success",
+            "count": len(tools),
+            "tools": tools
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to retrieve tools: {str(e)}"}
+        )
+
+@mcp.custom_route("/test", methods=["GET"])
+async def http_test_page(request: Request):
+    """HTTP endpoint to test TOPdesk connection."""
+    try:
+        # Get host and port from environment
+        host = os.getenv("TOPDESK_MCP_HOST", "0.0.0.0")
+        port = int(os.getenv("TOPDESK_MCP_PORT", 3030))
+        # Return HTML test page
+        html_content = _generate_test_html(host, port)
+        return HTMLResponse(content=html_content)
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to generate test page: {str(e)}"}
+        )
+
+@mcp.custom_route("/test/connection", methods=["GET"])
+async def http_test_connection_api(request: Request):
+    """HTTP endpoint to test TOPdesk connection API."""
+    try:
+        # Try to make a simple API call to test connection
+        result = topdesk_client.get_countries()
+        return JSONResponse(content={
+            "status": "success",
+            "message": "Successfully connected to TOPdesk",
+            "topdesk_url": TOPDESK_URL,
+            "username": TOPDESK_USERNAME,
+            "test_result": f"Retrieved {len(result) if isinstance(result, list) else 'N/A'} countries"
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Failed to connect to TOPdesk: {str(e)}",
+                "topdesk_url": TOPDESK_URL,
+                "username": TOPDESK_USERNAME
+            }
+        )
+
 def main():
     """Main function to run the MCP server."""
     transport = os.getenv("TOPDESK_MCP_TRANSPORT", "stdio")
@@ -1327,123 +1426,19 @@ def main():
     if transport not in ["stdio", "streamable-http", "sse"]:
         raise ValueError("Invalid transport type. Choose 'stdio', 'streamable-http', or 'sse'.")
     
-    # Add HTTP endpoints for HTTP transports
+    # Print endpoint info for HTTP transports
     if transport in ["streamable-http", "sse"]:
-        _add_http_endpoints(mcp, host, port)
+        print(f"\n✅ HTTP endpoints available:")
+        print(f"   📊 Logging (HTML): http://{host}:{port}/logging")
+        print(f"   📋 Logging (JSON): http://{host}:{port}/logging/json")
+        print(f"   🔧 Tools List: http://{host}:{port}/tools")
+        print(f"   🧪 Test Page: http://{host}:{port}/test")
+        print(f"   🔌 Test Connection API: http://{host}:{port}/test/connection\n")
     
     if transport == "stdio":
         mcp.run()    
     else:
         mcp.run(transport=transport, host=host, port=port)
-
-def _add_http_endpoints(mcp_instance, host: str, port: int):
-    """Add HTTP endpoints for HTTP transports."""
-    try:
-        # Try to access the underlying FastAPI app if available
-        if hasattr(mcp_instance, 'app'):
-            app = mcp_instance.app
-            
-            @app.get("/logging")
-            async def get_logs(lines: int = 100, level: str = None):
-                """HTTP endpoint to access logs."""
-                try:
-                    result = get_log_entries(lines, level)
-                    
-                    # Return HTML page
-                    html_content = _generate_log_html(result)
-                    from fastapi.responses import HTMLResponse
-                    return HTMLResponse(content=html_content)
-                    
-                except Exception as e:
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(
-                        status_code=500,
-                        content={"error": f"Failed to retrieve logs: {str(e)}"}
-                    )
-            
-            @app.get("/logging/json")
-            async def get_logs_json(lines: int = 100, level: str = None):
-                """HTTP endpoint to access logs as JSON."""
-                try:
-                    result = get_log_entries(lines, level)
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(content=result)
-                except Exception as e:
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(
-                        status_code=500,
-                        content={"error": f"Failed to retrieve logs: {str(e)}"}
-                    )
-            
-            @app.get("/tools")
-            async def get_tools():
-                """HTTP endpoint to list all available MCP tools."""
-                try:
-                    tools = list_registered_tools()
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(content={
-                        "status": "success",
-                        "count": len(tools),
-                        "tools": tools
-                    })
-                except Exception as e:
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(
-                        status_code=500,
-                        content={"error": f"Failed to retrieve tools: {str(e)}"}
-                    )
-            
-            @app.get("/test")
-            async def test_connection():
-                """HTTP endpoint to test TOPdesk connection."""
-                try:
-                    # Return HTML test page
-                    html_content = _generate_test_html(host, port)
-                    from fastapi.responses import HTMLResponse
-                    return HTMLResponse(content=html_content)
-                except Exception as e:
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(
-                        status_code=500,
-                        content={"error": f"Failed to generate test page: {str(e)}"}
-                    )
-            
-            @app.get("/test/connection")
-            async def test_connection_api():
-                """HTTP endpoint to test TOPdesk connection API."""
-                try:
-                    # Try to make a simple API call to test connection
-                    result = topdesk_client.get_countries()
-                    return {
-                        "status": "success",
-                        "message": "Successfully connected to TOPdesk",
-                        "topdesk_url": TOPDESK_URL,
-                        "username": TOPDESK_USERNAME,
-                        "test_result": f"Retrieved {len(result) if isinstance(result, list) else 'N/A'} countries"
-                    }
-                except Exception as e:
-                    from fastapi.responses import JSONResponse
-                    return JSONResponse(
-                        status_code=500,
-                        content={
-                            "status": "error",
-                            "message": f"Failed to connect to TOPdesk: {str(e)}",
-                            "topdesk_url": TOPDESK_URL,
-                            "username": TOPDESK_USERNAME
-                        }
-                    )
-                    
-            print(f"✅ HTTP endpoints added:")
-            print(f"   📊 Logging (HTML): http://{host}:{port}/logging")
-            print(f"   📋 Logging (JSON): http://{host}:{port}/logging/json")
-            print(f"   🔧 Tools List: http://{host}:{port}/tools")
-            print(f"   🧪 Test Page: http://{host}:{port}/test")
-            print(f"   🔌 Test Connection API: http://{host}:{port}/test/connection")
-            
-    except Exception as e:
-        # Fallback: just log that we couldn't add the endpoint
-        print(f"⚠️  Could not add HTTP endpoints: {e}")
-        print(f"📝 Tools are still accessible via the MCP protocol")
 
 def _generate_log_html(log_data: dict) -> str:
     """Generate HTML page for displaying logs."""
