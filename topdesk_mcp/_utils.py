@@ -103,11 +103,16 @@ class utils:
         else:
             url = f"{base_url}{uri}"
         
-        # Log the complete request for debugging (without credentials)
-        self._logger.debug(f"TOPdesk API request: GET {url.replace(base_url, '<BASE_URL>')}, params: {params}")
+        # Enhanced logging to diagnose ChatGPT MCP issues
+        self._logger.info(f"TOPdesk API request: GET {url.replace(base_url, '<BASE_URL>')}")
+        self._logger.debug(f"Request params: {params}")
         
         try:
-            return requests.get(url, headers=headers, verify=self._ssl_verify, timeout=DEFAULT_TIMEOUT)
+            response = requests.get(url, headers=headers, verify=self._ssl_verify, timeout=DEFAULT_TIMEOUT)
+            self._logger.info(f"TOPdesk API response: {response.status_code}")
+            if response.status_code >= 400:
+                self._logger.error(f"Error response body: {response.text[:500]}")
+            return response
         except requests.exceptions.RequestException as e:
             self._logger.error(f"Network error calling Topdesk API: {e.__class__.__name__}")
             # Return a mock response object with error info
