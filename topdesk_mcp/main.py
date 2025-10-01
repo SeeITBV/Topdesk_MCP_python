@@ -62,9 +62,15 @@ def handle_mcp_error(func):
     """Decorator to handle errors in MCP tools and return proper error format."""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
+        logger = logging.getLogger(__name__)
+        # Log tool call for debugging
+        logger.info(f"MCP tool called: {func.__name__} with args={args} kwargs={kwargs}")
         try:
-            return func(*args, **kwargs)
+            result = func(*args, **kwargs)
+            logger.info(f"MCP tool {func.__name__} completed successfully")
+            return result
         except MCPError as e:
+            logger.error(f"MCP tool {func.__name__} failed with MCPError: {e.message}")
             return {
                 "error": {
                     "code": e.error_code,
@@ -72,6 +78,7 @@ def handle_mcp_error(func):
                 }
             }
         except Exception as e:
+            logger.error(f"MCP tool {func.__name__} failed with exception: {str(e)}", exc_info=True)
             return {
                 "error": {
                     "code": -32603,  # Internal error
