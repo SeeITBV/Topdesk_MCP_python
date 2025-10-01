@@ -6,7 +6,10 @@ import logging
 from types import MethodType
 import functools
 import json
+import re
+import uuid
 from typing import Any, List, Dict, Optional
+from pydantic import BaseModel, Field, validator
 
 try:  # pragma: no cover - fallback for environments with stubbed FastMCP
     from fastmcp.requests import ListToolsRequest
@@ -19,6 +22,33 @@ except ImportError:  # pragma: no cover - align with tests that stub fastmcp
 
             self.args = args
             self.kwargs = kwargs
+
+# Pydantic models for MCP HTTP endpoints
+class MCPContentItem(BaseModel):
+    """Single content item in MCP response."""
+    type: str = Field(default="text", description="Type of content (text, structured, etc.)")
+    text: str = Field(..., description="Text content")
+    structured: Optional[Dict[str, Any]] = Field(None, description="Structured data (optional)")
+
+class MCPToolResponse(BaseModel):
+    """MCP tool call response format."""
+    content: List[MCPContentItem] = Field(..., description="Content items")
+    isError: bool = Field(default=False, description="Whether this is an error response")
+
+class MCPCallToolRequest(BaseModel):
+    """MCP tool call request format."""
+    name: str = Field(..., description="Name of the tool to call")
+    arguments: Dict[str, Any] = Field(default_factory=dict, description="Tool arguments")
+
+class MCPToolSchema(BaseModel):
+    """Schema for a single MCP tool."""
+    name: str
+    description: str
+    inputSchema: Dict[str, Any]
+
+class MCPListToolsResponse(BaseModel):
+    """Response for list_tools endpoint."""
+    tools: List[MCPToolSchema]
 
 # MCP Error handling utility
 class MCPError(Exception):
@@ -1695,6 +1725,526 @@ async def http_get_tools(request: Request):
             status_code=500,
             content={"error": f"Failed to retrieve tools: {str(e)}"}
         )
+
+#########################
+# MCP HTTP ENDPOINTS
+#########################
+
+@mcp.custom_route("/mcp/list_tools", methods=["GET", "POST"])
+async def mcp_list_tools(request: Request):
+    """MCP-compatible endpoint to list available tools with JSON Schema.
+    
+    Returns tools in MCP format with full JSON Schema for inputs.
+    """
+    request_id = str(uuid.uuid4())
+    logger = logging.getLogger(__name__)
+    logger.info(f"[{request_id}] MCP list_tools called")
+    
+    try:
+        # Define the search and fetch tools with full JSON Schema
+        tools = [
+            {
+                "name": "search",
+                "description": "Search for TOPdesk entities (incidents, changes, requests) with optional query filtering",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "entity": {
+                            "type": "string",
+                            "enum": ["incidents", "changes", "requests"],
+                            "description": "Type of entity to search for"
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Optional FIQL query or simple search term"
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 100,
+                            "default": 5,
+                            "description": "Maximum number of results to return (1-100)"
+                        }
+                    },
+                    "required": ["entity"]
+                }
+            },
+            {
+                "name": "fetch",
+                "description": "Fetch detailed information about a specific TOPdesk entity by ID",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "entity": {
+                            "type": "string",
+                            "enum": ["incidents", "changes", "requests"],
+                            "description": "Type of entity to fetch"
+                        },
+                        "id": {
+                            "type": "string",
+                            "description": "ID or number of the entity to fetch"
+                        }
+                    },
+                    "required": ["entity", "id"]
+                }
+            }
+        ]
+        
+        response = MCPListToolsResponse(tools=tools)
+        return JSONResponse(
+            content=response.dict(),
+            headers={
+                "Content-Type": "application/json",
+                "X-Request-Id": request_id
+            }
+        )
+    except Exception as e:
+        logger.error(f"[{request_id}] Failed to list tools: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "content": [{
+                    "type": "text",
+                    "text": f"Internal error: {str(e)}"
+                }],
+                "isError": True
+            },
+            headers={"X-Request-Id": request_id}
+        )
+
+@mcp.custom_route("/mcp/call_tool", methods=["POST"])
+async def mcp_call_tool(request: Request):
+    """MCP-compatible endpoint to call a tool.
+    
+    Accepts both:
+    - Standard MCP format: {"name": "tool", "arguments": {...}}
+    - Natural language fallback: plain string prompt
+    """
+    request_id = str(uuid.uuid4())
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get request body
+        body = await request.json()
+        logger.info(f"[{request_id}] MCP call_tool received: {body}")
+        
+        # Check if this is a natural language prompt (string instead of proper MCP format)
+        if isinstance(body, str):
+            # Natural language fallback
+            return await _handle_nl_fallback(body, request_id, logger)
+        
+        # Check if body contains a natural language prompt without name/arguments
+        if "name" not in body and "arguments" not in body:
+            # Check if there's a prompt field or just text
+            if "prompt" in body or len(body) == 1 and isinstance(list(body.values())[0], str):
+                prompt = body.get("prompt", list(body.values())[0])
+                return await _handle_nl_fallback(prompt, request_id, logger)
+        
+        # Standard MCP format - validate
+        try:
+            tool_request = MCPCallToolRequest(**body)
+        except Exception as validation_error:
+            logger.warning(f"[{request_id}] Validation error: {validation_error}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "content": [{
+                        "type": "text",
+                        "text": f"Invalid request format: {str(validation_error)}"
+                    }],
+                    "isError": True
+                },
+                headers={"X-Request-Id": request_id}
+            )
+        
+        # Route to appropriate tool handler
+        if tool_request.name == "search":
+            return await _handle_search_tool(tool_request.arguments, request_id, logger)
+        elif tool_request.name == "fetch":
+            return await _handle_fetch_tool(tool_request.arguments, request_id, logger)
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "content": [{
+                        "type": "text",
+                        "text": f"Unknown tool: {tool_request.name}. Available tools: search, fetch"
+                    }],
+                    "isError": True
+                },
+                headers={"X-Request-Id": request_id}
+            )
+            
+    except json.JSONDecodeError as e:
+        logger.error(f"[{request_id}] JSON decode error: {e}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "content": [{
+                    "type": "text",
+                    "text": f"Invalid JSON: {str(e)}"
+                }],
+                "isError": True
+            },
+            headers={"X-Request-Id": request_id}
+        )
+    except Exception as e:
+        logger.error(f"[{request_id}] Unexpected error: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "content": [{
+                    "type": "text",
+                    "text": f"Internal error: {str(e)}"
+                }],
+                "isError": True
+            },
+            headers={"X-Request-Id": request_id}
+        )
+
+async def _handle_nl_fallback(prompt: str, request_id: str, logger) -> JSONResponse:
+    """Handle natural language fallback for MCP call_tool."""
+    logger.info(f"[{request_id}] Natural language fallback triggered: {prompt[:100]}")
+    
+    # Regex patterns for common queries
+    # Pattern: "laatste X incidents"
+    match = re.search(r'laatste\s+(\d+)\s+incident', prompt, re.IGNORECASE)
+    if match:
+        limit = int(match.group(1))
+        logger.info(f"[{request_id}] Detected: last {limit} incidents")
+        return await _handle_search_tool({"entity": "incidents", "limit": limit}, request_id, logger)
+    
+    # Pattern: "laatste X changes"
+    match = re.search(r'laatste\s+(\d+)\s+change', prompt, re.IGNORECASE)
+    if match:
+        limit = int(match.group(1))
+        logger.info(f"[{request_id}] Detected: last {limit} changes")
+        return await _handle_search_tool({"entity": "changes", "limit": limit}, request_id, logger)
+    
+    # Pattern: "laatste incidenten" (no number)
+    if re.search(r'laatste\s+incidenten', prompt, re.IGNORECASE):
+        logger.info(f"[{request_id}] Detected: last incidents (default 5)")
+        return await _handle_search_tool({"entity": "incidents", "limit": 5}, request_id, logger)
+    
+    # Pattern: "laatste changes" (no number)
+    if re.search(r'laatste\s+changes', prompt, re.IGNORECASE):
+        logger.info(f"[{request_id}] Detected: last changes (default 5)")
+        return await _handle_search_tool({"entity": "changes", "limit": 5}, request_id, logger)
+    
+    # Pattern: "haal X incidents/changes"
+    match = re.search(r'haal.*?(\d+)\s+(incident|change)', prompt, re.IGNORECASE)
+    if match:
+        limit = int(match.group(1))
+        entity = "incidents" if "incident" in match.group(2).lower() else "changes"
+        logger.info(f"[{request_id}] Detected: get {limit} {entity}")
+        return await _handle_search_tool({"entity": entity, "limit": limit}, request_id, logger)
+    
+    # No pattern matched
+    return JSONResponse(
+        status_code=400,
+        content={
+            "content": [{
+                "type": "text",
+                "text": "Could not understand the request. Please use MCP format: {\"name\":\"search\",\"arguments\":{\"entity\":\"incidents\",\"limit\":5}} or try: 'laatste 5 incidenten'"
+            }],
+            "isError": True
+        },
+        headers={"X-Request-Id": request_id}
+    )
+
+async def _handle_search_tool(arguments: Dict[str, Any], request_id: str, logger) -> JSONResponse:
+    """Handle search tool execution."""
+    try:
+        # Validate arguments
+        entity = arguments.get("entity")
+        if not entity:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "content": [{
+                        "type": "text",
+                        "text": "Missing required argument: entity (must be 'incidents', 'changes', or 'requests')"
+                    }],
+                    "isError": True
+                },
+                headers={"X-Request-Id": request_id}
+            )
+        
+        if entity not in ["incidents", "changes", "requests"]:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "content": [{
+                        "type": "text",
+                        "text": f"Invalid entity: {entity}. Must be 'incidents', 'changes', or 'requests'"
+                    }],
+                    "isError": True
+                },
+                headers={"X-Request-Id": request_id}
+            )
+        
+        # Get and validate limit
+        limit = arguments.get("limit", 5)
+        if not isinstance(limit, int) or limit < 1 or limit > 100:
+            limit = max(1, min(100, int(limit))) if isinstance(limit, (int, float)) else 5
+            logger.warning(f"[{request_id}] Limit clamped to {limit}")
+        
+        query = arguments.get("query", "")
+        
+        logger.info(f"[{request_id}] Searching {entity} with limit={limit}, query={query}")
+        
+        # Execute search based on entity
+        if entity == "incidents":
+            results = await _search_incidents(limit, query, request_id, logger)
+        elif entity == "changes":
+            results = await _search_changes(limit, query, request_id, logger)
+        else:  # requests
+            # For now, treat requests same as incidents (TOPdesk may have separate endpoint)
+            results = await _search_incidents(limit, query, request_id, logger)
+        
+        # Format response
+        summary = f"Found {len(results)} {entity}"
+        if query:
+            summary += f" matching '{query}'"
+        
+        response_content = MCPToolResponse(
+            content=[
+                MCPContentItem(
+                    type="text",
+                    text=summary,
+                    structured={"results": results, "count": len(results)}
+                )
+            ],
+            isError=False
+        )
+        
+        return JSONResponse(
+            content=response_content.dict(),
+            headers={
+                "Content-Type": "application/json",
+                "X-Request-Id": request_id
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"[{request_id}] Search failed: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "content": [{
+                    "type": "text",
+                    "text": f"Search failed: {str(e)}"
+                }],
+                "isError": True
+            },
+            headers={"X-Request-Id": request_id}
+        )
+
+async def _search_incidents(limit: int, query: str, request_id: str, logger) -> List[Dict[str, Any]]:
+    """Search for incidents."""
+    try:
+        # Use existing list_open_incidents function
+        if query:
+            # If query provided, we'd need to use FIQL - for now just use limit
+            logger.info(f"[{request_id}] Query filtering not yet implemented, returning recent incidents")
+        
+        incidents = topdesk_list_open_incidents.fn(limit=limit)
+        
+        # Format results
+        results = []
+        for inc in incidents:
+            results.append({
+                "id": inc.get("id", ""),
+                "number": inc.get("key", ""),
+                "briefDescription": inc.get("title", ""),
+                "status": inc.get("status", ""),
+                "caller": inc.get("requester", ""),
+                "creationDate": inc.get("createdAt", ""),
+                "modificationDate": inc.get("updatedAt", "")
+            })
+        
+        return results
+    except Exception as e:
+        logger.error(f"[{request_id}] Failed to search incidents: {e}", exc_info=True)
+        raise
+
+async def _search_changes(limit: int, query: str, request_id: str, logger) -> List[Dict[str, Any]]:
+    """Search for changes."""
+    try:
+        # Use existing list_recent_changes function
+        if query:
+            logger.info(f"[{request_id}] Query filtering not yet implemented, returning recent changes")
+        
+        result = topdesk_list_recent_changes.fn(limit=limit, open_only=True)
+        changes = result.get('changes', [])
+        
+        # Format results
+        results = []
+        for change in changes:
+            results.append({
+                "id": change.get("id", ""),
+                "number": change.get("key", ""),
+                "briefDescription": change.get("title", ""),
+                "status": change.get("status", ""),
+                "requester": change.get("requester", ""),
+                "creationDate": change.get("createdAt", ""),
+                "modificationDate": change.get("updatedAt", "")
+            })
+        
+        return results
+    except Exception as e:
+        logger.error(f"[{request_id}] Failed to search changes: {e}", exc_info=True)
+        raise
+
+async def _handle_fetch_tool(arguments: Dict[str, Any], request_id: str, logger) -> JSONResponse:
+    """Handle fetch tool execution."""
+    try:
+        # Validate arguments
+        entity = arguments.get("entity")
+        entity_id = arguments.get("id")
+        
+        if not entity:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "content": [{
+                        "type": "text",
+                        "text": "Missing required argument: entity (must be 'incidents', 'changes', or 'requests')"
+                    }],
+                    "isError": True
+                },
+                headers={"X-Request-Id": request_id}
+            )
+        
+        if not entity_id:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "content": [{
+                        "type": "text",
+                        "text": "Missing required argument: id"
+                    }],
+                    "isError": True
+                },
+                headers={"X-Request-Id": request_id}
+            )
+        
+        if entity not in ["incidents", "changes", "requests"]:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "content": [{
+                        "type": "text",
+                        "text": f"Invalid entity: {entity}. Must be 'incidents', 'changes', or 'requests'"
+                    }],
+                    "isError": True
+                },
+                headers={"X-Request-Id": request_id}
+            )
+        
+        logger.info(f"[{request_id}] Fetching {entity} with id={entity_id}")
+        
+        # Execute fetch based on entity
+        if entity == "incidents":
+            result = await _fetch_incident(entity_id, request_id, logger)
+        elif entity == "changes":
+            result = await _fetch_change(entity_id, request_id, logger)
+        else:  # requests
+            # For now, treat requests same as incidents
+            result = await _fetch_incident(entity_id, request_id, logger)
+        
+        # Format response
+        summary = f"Retrieved {entity[:-1]} {result.get('number', entity_id)}: {result.get('briefDescription', 'N/A')}"
+        
+        response_content = MCPToolResponse(
+            content=[
+                MCPContentItem(
+                    type="text",
+                    text=summary,
+                    structured=result
+                )
+            ],
+            isError=False
+        )
+        
+        return JSONResponse(
+            content=response_content.dict(),
+            headers={
+                "Content-Type": "application/json",
+                "X-Request-Id": request_id
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"[{request_id}] Fetch failed: {str(e)}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "content": [{
+                    "type": "text",
+                    "text": f"Fetch failed: {str(e)}"
+                }],
+                "isError": True
+            },
+            headers={"X-Request-Id": request_id}
+        )
+
+async def _fetch_incident(entity_id: str, request_id: str, logger) -> Dict[str, Any]:
+    """Fetch a single incident by ID or number."""
+    try:
+        # Check if it's a UUID or number
+        if topdesk_client.utils.is_valid_uuid(entity_id):
+            incident = topdesk_client.incident.get_by_id(entity_id)
+        else:
+            incident = topdesk_client.incident.get_by_number(entity_id)
+        
+        # Format result
+        return {
+            "id": incident.get("id", ""),
+            "number": incident.get("number", ""),
+            "briefDescription": incident.get("briefDescription", ""),
+            "status": incident.get("processingStatus", {}).get("name", "") if isinstance(incident.get("processingStatus"), dict) else str(incident.get("processingStatus", "")),
+            "caller": incident.get("caller", {}).get("dynamicName", "") if isinstance(incident.get("caller"), dict) else "",
+            "creationDate": incident.get("creationDate", ""),
+            "modificationDate": incident.get("modificationDate", ""),
+            "closed": incident.get("closed", False),
+            "raw": incident
+        }
+    except Exception as e:
+        logger.error(f"[{request_id}] Failed to fetch incident: {e}", exc_info=True)
+        raise
+
+async def _fetch_change(entity_id: str, request_id: str, logger) -> Dict[str, Any]:
+    """Fetch a single change by ID or number."""
+    try:
+        # Try /changes endpoint first
+        try:
+            uri = f"/tas/api/changes/{entity_id}"
+            response = topdesk_client.utils.request_topdesk(uri)
+            if response.status_code >= 200 and response.status_code < 300:
+                change = topdesk_client.utils.handle_topdesk_response(response)
+            else:
+                raise Exception(f"Failed to fetch from /changes: {response.status_code}")
+        except Exception:
+            # Fallback to /operatorChanges
+            uri = f"/tas/api/operatorChanges/{entity_id}"
+            response = topdesk_client.utils.request_topdesk(uri)
+            change = topdesk_client.utils.handle_topdesk_response(response)
+        
+        # Format result
+        return {
+            "id": change.get("id", ""),
+            "number": change.get("number", ""),
+            "briefDescription": change.get("briefDescription", ""),
+            "status": change.get("status", {}).get("name", "") if isinstance(change.get("status"), dict) else str(change.get("status", "")),
+            "requester": change.get("requester", {}).get("dynamicName", "") if isinstance(change.get("requester"), dict) else "",
+            "creationDate": change.get("creationDate", ""),
+            "modificationDate": change.get("modificationDate", ""),
+            "raw": change
+        }
+    except Exception as e:
+        logger.error(f"[{request_id}] Failed to fetch change: {e}", exc_info=True)
+        raise
 
 @mcp.custom_route("/test", methods=["GET"])
 async def http_test_page(request: Request):

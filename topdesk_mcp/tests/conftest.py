@@ -84,6 +84,16 @@ if "fastmcp" not in sys.modules:  # pragma: no cover - testing support only
 
             return decorator
 
+        def custom_route(self, path, methods=None):
+            """Stub for custom_route decorator."""
+            def decorator(func):
+                return func
+            return decorator
+
+        async def get_tools(self):
+            """Return tools as a dict."""
+            return {tool["name"]: tool for tool in self._tools}
+
         @property
         def tools(self):  # noqa: D401 - simple stub property
             """Return the list of registered tool metadata."""
