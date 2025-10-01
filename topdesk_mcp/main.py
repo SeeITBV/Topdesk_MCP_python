@@ -1668,6 +1668,188 @@ def _normalize_changes_response(changes, open_only: bool, endpoint_used: str) ->
         }
     }
 
+#########################
+# CONVENIENCE TOOLS
+#########################
+@mcp.tool(
+    description="Get recent incidents from TOPdesk with flexible sorting options. This is a convenience wrapper around incident listing.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "count": {
+                "type": "integer",
+                "description": "Number of incidents to return (default: 5, max: 100)",
+                "default": 5,
+                "minimum": 1,
+                "maximum": 100
+            },
+            "sort_field": {
+                "type": "string",
+                "description": "Field to sort by (default: creationDate)",
+                "enum": ["creationDate", "modificationDate", "closedDate"],
+                "default": "creationDate"
+            }
+        },
+        "required": []
+    }
+)
+@handle_mcp_error
+def topdesk_get_recent_incidents(count: Optional[int] = 5, sort_field: Optional[str] = "creationDate") -> list:
+    """Get recent incidents from TOPdesk with flexible sorting.
+    
+    This is a convenience tool that provides more control over sorting than the basic incident listing.
+    
+    Parameters:
+        count: Number of incidents to return (1-100, default: 5)
+        sort_field: Field to sort by (creationDate, modificationDate, or closedDate)
+        
+    Returns:
+        list: List of normalized incident objects
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Validate and clamp count
+    if count is None:
+        count = 5
+    count = max(1, min(100, int(count)))
+    
+    # Validate sort_field
+    valid_sorts = ["creationDate", "modificationDate", "closedDate"]
+    if sort_field not in valid_sorts:
+        logger.warning(f"Invalid sort_field '{sort_field}', using default 'creationDate'")
+        sort_field = "creationDate"
+    
+    try:
+        # Build request with sort parameter
+        uri = "/tas/api/incidents"
+        sort_param = f"{sort_field}:desc"
+        
+        logger.info(f"Fetching {count} recent incidents sorted by {sort_field}")
+        
+        response = topdesk_client.utils.request_topdesk(
+            uri, 
+            page_size=count, 
+            custom_uri={'sort': sort_param}
+        )
+        
+        if response.status_code >= 200 and response.status_code < 300:
+            incidents = topdesk_client.utils.handle_topdesk_response(response)
+            
+            # Normalize the response
+            normalized_incidents = []
+            if isinstance(incidents, list):
+                for incident in incidents:
+                    normalized = {
+                        "id": incident.get("id", ""),
+                        "key": incident.get("number", ""),
+                        "title": incident.get("briefDescription", ""),
+                        "status": incident.get("processingStatus", {}).get("name", "") if isinstance(incident.get("processingStatus"), dict) else str(incident.get("processingStatus", "")),
+                        "requester": incident.get("caller", {}).get("dynamicName", "") if isinstance(incident.get("caller"), dict) else "",
+                        "createdAt": incident.get("creationDate", ""),
+                        "updatedAt": incident.get("modificationDate", ""),
+                        "closed": incident.get("closed", False)
+                    }
+                    normalized_incidents.append(normalized)
+            
+            logger.info(f"Retrieved {len(normalized_incidents)} incidents")
+            return normalized_incidents
+        else:
+            raise MCPError(f"Failed to fetch incidents: status {response.status_code}", -32000)
+            
+    except MCPError:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching recent incidents: {e}", exc_info=True)
+        raise MCPError(f"Failed to retrieve incidents: {str(e)}", -32603)
+
+@mcp.tool(
+    description="Get recent changes from TOPdesk with flexible sorting options. This is a convenience wrapper around change listing.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "count": {
+                "type": "integer",
+                "description": "Number of changes to return (default: 5, max: 100)",
+                "default": 5,
+                "minimum": 1,
+                "maximum": 100
+            },
+            "sort_field": {
+                "type": "string",
+                "description": "Field to sort by (default: modificationDate)",
+                "enum": ["creationDate", "modificationDate"],
+                "default": "modificationDate"
+            }
+        },
+        "required": []
+    }
+)
+@handle_mcp_error
+def topdesk_get_recent_changes(count: Optional[int] = 5, sort_field: Optional[str] = "modificationDate") -> dict:
+    """Get recent changes from TOPdesk with flexible sorting.
+    
+    This is a convenience tool that provides more control over sorting than the basic change listing.
+    
+    Parameters:
+        count: Number of changes to return (1-100, default: 5)
+        sort_field: Field to sort by (creationDate or modificationDate)
+        
+    Returns:
+        dict: Dictionary with 'changes' list and 'metadata'
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Validate and clamp count
+    if count is None:
+        count = 5
+    count = max(1, min(100, int(count)))
+    
+    # Validate sort_field
+    valid_sorts = ["creationDate", "modificationDate"]
+    if sort_field not in valid_sorts:
+        logger.warning(f"Invalid sort_field '{sort_field}', using default 'modificationDate'")
+        sort_field = "modificationDate"
+    
+    try:
+        # Try /changes endpoint first (supports sorting)
+        uri = "/tas/api/changes"
+        sort_param = f"{sort_field}:desc"
+        
+        logger.info(f"Fetching {count} recent changes sorted by {sort_field}")
+        
+        try:
+            response = topdesk_client.utils.request_topdesk(
+                uri, 
+                page_size=count, 
+                custom_uri={'sort': sort_param}
+            )
+            
+            if response.status_code >= 200 and response.status_code < 300:
+                changes = topdesk_client.utils.handle_topdesk_response(response)
+                return _normalize_changes_response(changes, False, "changes")
+            elif response.status_code == 404:
+                logger.info("/changes not available, falling back to /operatorChanges")
+        except Exception as e:
+            logger.warning(f"Error with /changes: {e}, falling back")
+        
+        # Fallback to /operatorChanges (no sorting support)
+        uri = "/tas/api/operatorChanges"
+        logger.info(f"Using fallback /operatorChanges endpoint")
+        
+        response = topdesk_client.utils.request_topdesk(uri, page_size=count)
+        
+        if response.status_code >= 200 and response.status_code < 300:
+            changes = topdesk_client.utils.handle_topdesk_response(response)
+            return _normalize_changes_response(changes, False, "operatorChanges")
+        else:
+            raise MCPError(f"Failed to fetch changes: status {response.status_code}", -32000)
+            
+    except MCPError:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching recent changes: {e}", exc_info=True)
+        raise MCPError(f"Failed to retrieve changes: {str(e)}", -32603)
+
 # Register HTTP custom routes at module level
 # These will be available when the server runs in HTTP mode
 from starlette.responses import JSONResponse, HTMLResponse
@@ -2847,12 +3029,22 @@ def _generate_test_html(host: str, port: int) -> str:
                     <div id="tools-result" class="result-box"></div>
                 </div>
                 
+                <div class="test-section">
+                    <h2>🌐 MCP HTTP Interface</h2>
+                    <p>Test the MCP-compatible HTTP endpoints for ChatGPT integration.</p>
+                    <button class="test-button" onclick="testMCPListTools()">MCP List Tools</button>
+                    <button class="test-button" onclick="testMCPSearchIncidents()">MCP Search Incidents</button>
+                    <button class="test-button" onclick="testMCPNLFallback()">MCP NL Fallback</button>
+                    <div id="mcp-result" class="result-box"></div>
+                </div>
+                
                 <div class="links">
                     <strong>Quick Links:</strong><br><br>
                     <a href="/tools" target="_blank">📋 Tools API (JSON)</a>
                     <a href="/test/connection" target="_blank">🔌 Connection API (JSON)</a>
                     <a href="/test/incidents" target="_blank">🎫 Incidents API (JSON)</a>
                     <a href="/test/changes" target="_blank">🔄 Changes API (JSON)</a>
+                    <a href="/mcp/list_tools" target="_blank">🤖 MCP List Tools (JSON)</a>
                     <a href="/logging" target="_blank">📊 View Logs</a>
                 </div>
             </div>
@@ -3050,6 +3242,153 @@ def _generate_test_html(host: str, port: int) -> str:
                     resultBox.innerHTML = `
                         <strong>❌ Error</strong><br>
                         Failed to load changes: ${{error.message}}
+                    `;
+                }} finally {{
+                    button.disabled = false;
+                }}
+            }}
+            
+            async function testMCPListTools() {{
+                const resultBox = document.getElementById('mcp-result');
+                const button = event.target;
+                
+                resultBox.className = 'result-box loading';
+                resultBox.style.display = 'block';
+                resultBox.innerHTML = '⏳ Calling MCP list_tools...';
+                button.disabled = true;
+                
+                try {{
+                    const response = await fetch('/mcp/list_tools');
+                    const data = await response.json();
+                    
+                    if (data.tools) {{
+                        let toolsList = '<strong>✅ MCP Tools Available</strong><br><br>';
+                        toolsList += '<div style="text-align: left;">';
+                        data.tools.forEach((tool) => {{
+                            toolsList += `
+                                <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 4px; border-left: 3px solid #667eea;">
+                                    <strong style="color: #667eea;">${{tool.name}}</strong><br>
+                                    <small>${{tool.description}}</small><br>
+                                    <small style="color: #666;">Required: ${{tool.inputSchema.required?.join(', ') || 'None'}}</small>
+                                </div>
+                            `;
+                        }});
+                        toolsList += '</div>';
+                        
+                        resultBox.className = 'result-box success';
+                        resultBox.innerHTML = toolsList;
+                    }} else {{
+                        resultBox.className = 'result-box error';
+                        resultBox.innerHTML = '<strong>❌ No tools found</strong>';
+                    }}
+                }} catch (error) {{
+                    resultBox.className = 'result-box error';
+                    resultBox.innerHTML = `
+                        <strong>❌ Error</strong><br>
+                        Failed to list MCP tools: ${{error.message}}
+                    `;
+                }} finally {{
+                    button.disabled = false;
+                }}
+            }}
+            
+            async function testMCPSearchIncidents() {{
+                const resultBox = document.getElementById('mcp-result');
+                const button = event.target;
+                
+                resultBox.className = 'result-box loading';
+                resultBox.style.display = 'block';
+                resultBox.innerHTML = '⏳ Calling MCP search tool...';
+                button.disabled = true;
+                
+                try {{
+                    const response = await fetch('/mcp/call_tool', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{
+                            name: 'search',
+                            arguments: {{
+                                entity: 'incidents',
+                                limit: 3
+                            }}
+                        }})
+                    }});
+                    const data = await response.json();
+                    
+                    if (!data.isError && data.content && data.content[0].structured) {{
+                        const results = data.content[0].structured.results;
+                        let incidentsList = `<strong>✅ ${{data.content[0].text}}</strong><br><br>`;
+                        incidentsList += '<div style="text-align: left;">';
+                        results.forEach((inc) => {{
+                            incidentsList += `
+                                <div style="margin-bottom: 15px; padding: 10px; background: white; border-radius: 4px; border-left: 3px solid #4CAF50;">
+                                    <strong style="color: #4CAF50;">${{inc.number}}</strong><br>
+                                    <strong>${{inc.briefDescription}}</strong><br>
+                                    <small style="color: #666;">
+                                        Status: ${{inc.status}} | Caller: ${{inc.caller}}
+                                    </small>
+                                </div>
+                            `;
+                        }});
+                        incidentsList += '</div>';
+                        
+                        resultBox.className = 'result-box success';
+                        resultBox.innerHTML = incidentsList;
+                    }} else {{
+                        resultBox.className = 'result-box error';
+                        resultBox.innerHTML = `<strong>❌ ${{data.content?.[0]?.text || 'Error'}}</strong>`;
+                    }}
+                }} catch (error) {{
+                    resultBox.className = 'result-box error';
+                    resultBox.innerHTML = `
+                        <strong>❌ Error</strong><br>
+                        Failed to call MCP tool: ${{error.message}}
+                    `;
+                }} finally {{
+                    button.disabled = false;
+                }}
+            }}
+            
+            async function testMCPNLFallback() {{
+                const resultBox = document.getElementById('mcp-result');
+                const button = event.target;
+                
+                resultBox.className = 'result-box loading';
+                resultBox.style.display = 'block';
+                resultBox.innerHTML = '⏳ Testing NL fallback...';
+                button.disabled = true;
+                
+                try {{
+                    const response = await fetch('/mcp/call_tool', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{
+                            prompt: 'laatste 2 incidenten'
+                        }})
+                    }});
+                    const data = await response.json();
+                    
+                    if (!data.isError && data.content) {{
+                        let message = `<strong>✅ Natural Language Understood!</strong><br><br>`;
+                        message += `<div style="text-align: left;">`;
+                        message += `Prompt: "laatste 2 incidenten"<br>`;
+                        message += `Result: ${{data.content[0].text}}<br>`;
+                        if (data.content[0].structured) {{
+                            message += `<br>Retrieved ${{data.content[0].structured.count}} incident(s)`;
+                        }}
+                        message += `</div>`;
+                        
+                        resultBox.className = 'result-box success';
+                        resultBox.innerHTML = message;
+                    }} else {{
+                        resultBox.className = 'result-box error';
+                        resultBox.innerHTML = `<strong>❌ ${{data.content?.[0]?.text || 'Error'}}</strong>`;
+                    }}
+                }} catch (error) {{
+                    resultBox.className = 'result-box error';
+                    resultBox.innerHTML = `
+                        <strong>❌ Error</strong><br>
+                        Failed to test NL fallback: ${{error.message}}
                     `;
                 }} finally {{
                     button.disabled = false;

@@ -2,6 +2,110 @@
 
 This project is a Model Context Protocol (MCP) server implemented in Python. It exposes the Topdesk API via the TOPdeskPy SDK.
 
+## 🚀 ChatGPT Integration (MCP HTTP Interface)
+
+The server now includes MCP-compatible HTTP endpoints that work seamlessly with ChatGPT and other AI assistants!
+
+### Quick Start for ChatGPT
+
+1. **Start the server in HTTP mode:**
+   ```bash
+   TOPDESK_MCP_TRANSPORT=streamable-http TOPDESK_MCP_PORT=3030 topdesk-mcp
+   ```
+
+2. **Available MCP Endpoints:**
+   - `GET/POST http://localhost:3030/mcp/list_tools` - List available tools
+   - `POST http://localhost:3030/mcp/call_tool` - Execute tool calls
+
+### Example ChatGPT Prompts
+
+Once connected, you can use natural language queries:
+
+```
+"Haal de laatste 5 incidenten"
+"Toon de laatste 10 changes"  
+"Search for incidents with limit 3"
+```
+
+### curl Examples
+
+**List available tools:**
+```bash
+curl http://localhost:3030/mcp/list_tools
+```
+
+**Search for incidents:**
+```bash
+curl -X POST http://localhost:3030/mcp/call_tool \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "search",
+    "arguments": {
+      "entity": "incidents",
+      "limit": 5
+    }
+  }'
+```
+
+**Fetch a specific incident:**
+```bash
+curl -X POST http://localhost:3030/mcp/call_tool \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "fetch",
+    "arguments": {
+      "entity": "incidents",
+      "id": "I-2024-001"
+    }
+  }'
+```
+
+**Natural language fallback (Dutch):**
+```bash
+curl -X POST http://localhost:3030/mcp/call_tool \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "haal de laatste 3 incidenten"}'
+```
+
+### MCP Tools
+
+The MCP interface exposes two main tools:
+
+- **search**: Search for incidents, changes, or requests
+  - Arguments: `entity` (incidents/changes/requests), `query` (optional FIQL), `limit` (1-100)
+  - Example: `{"entity": "incidents", "limit": 5}`
+
+- **fetch**: Get detailed information about a specific entity
+  - Arguments: `entity` (incidents/changes/requests), `id` (ID or number)
+  - Example: `{"entity": "incidents", "id": "I-2024-001"}`
+
+### Response Format
+
+All MCP endpoints return responses in the standard MCP format:
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Found 5 incidents",
+      "structured": {
+        "results": [...],
+        "count": 5
+      }
+    }
+  ],
+  "isError": false
+}
+```
+
+### Error Handling
+
+- **400 Bad Request**: Invalid arguments or malformed request
+- **500 Internal Server Error**: TOPdesk API errors or server issues
+- All responses include `X-Request-Id` header for tracking
+- Detailed error messages in `content[0].text`
+
 ## 🎉 New: Incidents & Changes Support
 
 The connector now includes dedicated tools for retrieving incidents and changes from TOPdesk:
@@ -156,6 +260,8 @@ topdesk_mcp/  # Directory for the MCP server package
 
 ## Exposed Tools
 
+### Core Tools
+
 - **list_registered_tools**  
   List all registered MCP tools available in this server.
 
@@ -167,6 +273,14 @@ topdesk_mcp/  # Directory for the MCP server package
 
 - **topdesk_get_object_schemas**  
   Get the full object schemas for TOPdesk incidents and all their subfields.
+
+### Incident Management
+
+- **topdesk_list_open_incidents**  
+  List open/unresolved incidents from TOPdesk, sorted by most recent modification. Returns normalized incident objects with id, number, title, status, requester, and timestamps.
+
+- **topdesk_get_recent_incidents** *(Convenience Tool)*  
+  Get recent incidents with flexible sorting options (by creationDate, modificationDate, or closedDate). Allows 1-100 incidents with explicit sort control.
 
 - **topdesk_get_incident**  
   Get a TOPdesk incident by UUID or by Incident Number (I-xxxxxx-xxx). Both formats are accepted.
@@ -214,6 +328,17 @@ topdesk_mcp/  # Directory for the MCP server package
   Download and convert all attachments for a TOPdesk incident to Markdown format. Uses intelligent document conversion with support for PDFs, Office documents, images, and other file types. Attempts conversion using OpenAI API (if configured), then Docling API (if configured), and falls back to MarkItDown for local processing.
 
 - **topdesk_get_complete_incident_overview**  
+  Get a complete overview of a TOPdesk incident including all actions, progress trail, and attachments in a single call.
+
+### Change Management
+
+- **topdesk_list_recent_changes**  
+  List recent changes from TOPdesk. Automatically tries `/changes` endpoint first, falls back to `/operatorChanges` if not available. Returns normalized change objects with id, number, title, status, requester, and timestamps.
+
+- **topdesk_get_recent_changes** *(Convenience Tool)*  
+  Get recent changes with flexible sorting options (by creationDate or modificationDate). Allows 1-100 changes with explicit sort control and automatic endpoint fallback.
+
+### Person & Operator Management
   Get a comprehensive overview of a TOPdesk incident including its details, progress trail, and attachments converted to Markdown. This tool combines the results of `topdesk_get_incident`, `topdesk_get_progress_trail`, and `topdesk_get_incident_attachments_as_markdown` into a single response for convenient access to all incident information.
 
 - **topdesk_get_operatorgroups_of_operator**  
