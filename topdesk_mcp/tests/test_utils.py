@@ -730,3 +730,56 @@ class TestUtils:
         mock_openai.assert_not_called()
         mock_docling.assert_not_called()
         mock_md.assert_called_once()
+
+    def test_handle_topdesk_response_206_partial_content(self, utils_instance):
+        """Test that status 206 (Partial Content) is handled correctly and returns data."""
+        # Mock first response with status 206 (partial content)
+        response1 = Mock()
+        response1.status_code = 206
+        response1.json.return_value = [{"id": "1", "number": "I001"}]
+        response1.url = "https://test.topdesk.net/tas/api/incidents?pageSize=10&pageStart=0"
+        response1.headers = {}
+        response1.text = '[{"id": "1", "number": "I001"}]'
+        
+        # Mock second response with status 200 (final page)
+        response2 = Mock()
+        response2.status_code = 200
+        response2.json.return_value = [{"id": "2", "number": "I002"}]
+        response2.url = "https://test.topdesk.net/tas/api/incidents?pageSize=10&pageStart=10"
+        response2.headers = {}
+        response2.text = '[{"id": "2", "number": "I002"}]'
+        
+        # Mock request_topdesk to return the second response on recursive call
+        with patch.object(utils_instance, 'request_topdesk', return_value=response2):
+            result = utils_instance.handle_topdesk_response(response1)
+        
+        # Should return combined data from both pages
+        assert result is not None, "Status 206 should return data, not None"
+        assert isinstance(result, list), "Result should be a list"
+        assert len(result) == 2, "Should contain data from both pages"
+        assert result[0]["id"] == "1"
+        assert result[1]["id"] == "2"
+
+    def test_handle_topdesk_response_206_returns_value(self, utils_instance):
+        """Test that _handle_partial_content returns a value for status 206."""
+        # Create a simple mock that returns 200 on recursive call
+        response = Mock()
+        response.status_code = 206
+        response.json.return_value = [{"id": "test"}]
+        response.url = "https://test.topdesk.net/tas/api/test?pageSize=1&pageStart=0"
+        response.headers = {}
+        response.text = '[{"id": "test"}]'
+        
+        # Mock the recursive call to return a final response
+        final_response = Mock()
+        final_response.status_code = 200
+        final_response.json.return_value = []
+        final_response.text = '[]'
+        final_response.headers = {}
+        
+        with patch.object(utils_instance, 'request_topdesk', return_value=final_response):
+            result = utils_instance._handle_success_response(response)
+        
+        # The key test: result should not be None
+        assert result is not None, "Status 206 handler must return a value"
+        assert isinstance(result, list), "Should return a list"

@@ -156,3 +156,4 @@ def test_fetch_requires_identifier(main_module):
 
     with pytest.raises(Exception):  # MCPError should be wrapped by handle_mcp_error decorator
         module.fetch(" ")
+
