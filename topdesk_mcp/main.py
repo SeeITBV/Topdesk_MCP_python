@@ -1420,6 +1420,15 @@ def topdesk_list_open_incidents(limit: Optional[int] = 5) -> list:
     # Log the actual parameter received for debugging ChatGPT compatibility
     logger.info(f"topdesk_list_open_incidents called with limit={limit} (type: {type(limit).__name__})")
     
+    # Validate limit range
+    if not isinstance(limit, int):
+        try:
+            limit = int(limit)
+            logger.info(f"Converted limit to int: {limit}")
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid limit value: {limit}, error: {e}")
+            raise MCPError(f"Limit must be a number, got: {type(limit).__name__}", -32602)
+    
     if limit < 1 or limit > 100:
         raise MCPError("Limit must be between 1 and 100", -32602)
     
