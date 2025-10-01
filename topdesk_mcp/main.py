@@ -1293,7 +1293,8 @@ def topdesk_health_check() -> dict:
         # Log the request for diagnostics
         logger.info(f"Health check: GET {TOPDESK_URL}/tas/api/version -> Status {response.status_code}")
         
-        if response.status_code == 200:
+        # Handle success responses (typically 200, but check all 2xx for robustness)
+        if response.status_code >= 200 and response.status_code < 300:
             try:
                 version_data = response.json()
                 logger.debug(f"TOPdesk version data: {version_data}")
@@ -1485,7 +1486,8 @@ def topdesk_list_recent_changes(limit: int = 5, open_only: bool = True) -> dict:
         
         logger.debug(f"Response status for /changes: {response.status_code}")
         
-        if response.status_code == 200:
+        # Handle response - check for 2xx status codes (including 200 and 206 for pagination)
+        if response.status_code >= 200 and response.status_code < 300:
             changes = topdesk_client.utils.handle_topdesk_response(response)
             logger.info(f"Successfully retrieved changes from /changes endpoint")
             return _normalize_changes_response(changes, open_only, "changes")
@@ -1511,7 +1513,8 @@ def topdesk_list_recent_changes(limit: int = 5, open_only: bool = True) -> dict:
         
         logger.debug(f"Response status for /operatorChanges: {response.status_code}")
         
-        if response.status_code == 200:
+        # Handle response - check for 2xx status codes (including 200 and 206 for pagination)
+        if response.status_code >= 200 and response.status_code < 300:
             changes = topdesk_client.utils.handle_topdesk_response(response)
             logger.info(f"Successfully retrieved changes from /operatorChanges endpoint")
             return _normalize_changes_response(changes, open_only, "operatorChanges")
