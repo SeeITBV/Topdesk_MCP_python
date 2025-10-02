@@ -342,9 +342,15 @@ def topdesk_get_incident(incident_id: str, concise: Optional[bool] = True) -> di
         concise = True
     
     if concise:
-        return topdesk_client.incident.get_concise(incident=incident_id)
+        result = topdesk_client.incident.get_concise(incident=incident_id)
     else:
-        return topdesk_client.incident.get(incident=incident_id)
+        result = topdesk_client.incident.get(incident=incident_id)
+    
+    # Check if API returned an error (string) instead of a dict
+    if isinstance(result, str):
+        raise MCPError(f"TOPdesk API error: {result}", error_code=-32603)
+    
+    return result
 
 
 @mcp.tool(
@@ -385,7 +391,13 @@ def topdesk_get_incidents_by_fiql_query(query: str, page_size: Optional[int] = 1
     if page_size < 1 or page_size > 1000:
         raise MCPError("page_size must be between 1 and 1000", -32602)
     
-    return topdesk_client.incident.get_list(query=query, page_size=page_size)
+    result = topdesk_client.incident.get_list(query=query, page_size=page_size)
+    
+    # Check if API returned an error (string) instead of a list
+    if isinstance(result, str):
+        raise MCPError(f"TOPdesk API error: {result}", error_code=-32603)
+    
+    return result
 
 
 
@@ -442,6 +454,10 @@ def search(query: str, max_results: int = 5) -> Dict[str, List[Dict[str, str]]]:
 
     incidents = topdesk_client.incident.get_list(query=fiql_query)
 
+    # Check if API returned an error (string) instead of a list
+    if isinstance(incidents, str):
+        raise MCPError(f"TOPdesk API error: {incidents}", error_code=-32603)
+    
     results: List[Dict[str, str]] = []
     for incident in incidents[:max_results]:
         incident_id = incident.get("id")
@@ -505,6 +521,10 @@ def fetch(id: str, concise: bool = True) -> Dict[str, List[Dict[str, str]]]:
         incident = topdesk_client.incident.get_concise(incident=id)
     else:
         incident = topdesk_client.incident.get(incident=id)
+
+    # Check if API returned an error (string) instead of a dict
+    if isinstance(incident, str):
+        raise MCPError(f"TOPdesk API error: {incident}", error_code=-32603)
 
     # Extract relevant fields for MCP format
     incident_id_value = incident.get("id", id)
@@ -864,11 +884,17 @@ def topdesk_get_progress_trail(incident_id: str, inlineimages: Optional[bool] = 
     if force_images_as_data is None:
         force_images_as_data = True
     
-    return topdesk_client.incident.get_progress_trail(
+    result = topdesk_client.incident.get_progress_trail(
         incident=incident_id, 
         inlineimages=inlineimages,
         force_images_as_data=force_images_as_data
     )
+    
+    # Check if API returned an error (string) instead of a list
+    if isinstance(result, str):
+        raise MCPError(f"TOPdesk API error: {result}", error_code=-32603)
+    
+    return result
 
 @mcp.tool(
     description="Get all attachments for a TOPdesk incident as base64-encoded data.",
@@ -918,7 +944,13 @@ def topdesk_get_incident_attachments_as_markdown(incident_id: str) -> list:
     if not incident_id or not str(incident_id).strip():
         raise MCPError("Incident ID must be provided and cannot be empty", -32602)
     
-    return topdesk_client.incident.attachments.download_attachments_as_markdown(incident=incident_id)
+    result = topdesk_client.incident.attachments.download_attachments_as_markdown(incident=incident_id)
+    
+    # Check if API returned an error (string) instead of a list
+    if isinstance(result, str):
+        raise MCPError(f"TOPdesk API error: {result}", error_code=-32603)
+    
+    return result
 
 @mcp.tool(
     description="Get a comprehensive overview of a TOPdesk incident including its details, progress trail, and attachments converted to Markdown.",
@@ -945,6 +977,8 @@ def topdesk_get_complete_incident_overview(incident_id: str) -> dict:
     
     # Get incident details
     incident_details = topdesk_client.incident.get_concise(incident=incident_id)
+    if isinstance(incident_details, str):
+        raise MCPError(f"TOPdesk API error getting incident details: {incident_details}", error_code=-32603)
     
     # Get progress trail
     progress_trail = topdesk_client.incident.get_progress_trail(
@@ -952,9 +986,13 @@ def topdesk_get_complete_incident_overview(incident_id: str) -> dict:
         inlineimages=False,
         force_images_as_data=False
     )
+    if isinstance(progress_trail, str):
+        raise MCPError(f"TOPdesk API error getting progress trail: {progress_trail}", error_code=-32603)
 
     # Get attachments as markdown
     attachments = topdesk_client.incident.attachments.download_attachments_as_markdown(incident=incident_id)
+    if isinstance(attachments, str):
+        raise MCPError(f"TOPdesk API error getting attachments: {attachments}", error_code=-32603)
 
     # Combine results into a comprehensive overview
     comprehensive_overview = {
