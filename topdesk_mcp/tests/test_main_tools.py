@@ -94,6 +94,36 @@ def test_search_rejects_empty_title(main_module):
         module.search(query="   ")
 
 
+def test_search_handles_api_error_string(main_module):
+    """Test that search properly handles when API returns an error string instead of a list."""
+    module, mock_client = main_module
+    # Simulate API returning an error string (what happens when handle_topdesk_response gets a 400/500 error)
+    mock_client.incident.get_list.return_value = "Bad Request: The request was invalid or cannot be served."
+
+    # Should raise MCPError instead of AttributeError
+    with pytest.raises(module.MCPError) as exc_info:
+        module.search(query="test")
+    
+    # Check that the error message contains the API error
+    assert "TOPdesk API error" in str(exc_info.value)
+    assert "Bad Request" in str(exc_info.value)
+
+
+def test_fetch_handles_api_error_string(main_module):
+    """Test that fetch properly handles when API returns an error string instead of a dict."""
+    module, mock_client = main_module
+    # Simulate API returning an error string
+    mock_client.incident.get_concise.return_value = "Not Found: The URI requested is invalid or the resource does not exist."
+
+    # Should raise MCPError instead of AttributeError
+    with pytest.raises(module.MCPError) as exc_info:
+        module.fetch(id="nonexistent-id")
+    
+    # Check that the error message contains the API error
+    assert "TOPdesk API error" in str(exc_info.value)
+    assert "Not Found" in str(exc_info.value)
+
+
 def test_fetch_returns_concise_by_default(main_module):
     module, mock_client = main_module
     mock_client.incident.get_concise.return_value = {
@@ -156,4 +186,20 @@ def test_fetch_requires_identifier(main_module):
 
     with pytest.raises(Exception):  # MCPError should be wrapped by handle_mcp_error decorator
         module.fetch(" ")
+
+
+def test_topdesk_get_incidents_by_fiql_query_handles_api_error_string(main_module):
+    """Test that topdesk_get_incidents_by_fiql_query properly handles when API returns an error string."""
+    module, mock_client = main_module
+    # Simulate API returning an error string
+    mock_client.incident.get_list.return_value = "Bad Request: query contains unknown field: 'archived'"
+
+    # Should raise MCPError instead of trying to iterate over the string
+    with pytest.raises(module.MCPError) as exc_info:
+        module.topdesk_get_incidents_by_fiql_query(query="archived==True")
+    
+    # Check that the error message contains the API error
+    assert "TOPdesk API error" in str(exc_info.value)
+    assert "Bad Request" in str(exc_info.value)
+
 
